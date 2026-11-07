@@ -1,0 +1,132 @@
+Reading package lists...
+Building dependency tree...
+Reading state information...
+Solving dependencies...
+The following additional packages will be installed:
+  binutils binutils-aarch64-linux-gnu binutils-common bsdextrautils bsdutils
+  bzip2 cpp cpp-15 cpp-15-aarch64-linux-gnu cpp-aarch64-linux-gnu diffstat ed
+  g++ g++-15 g++-15-aarch64-linux-gnu g++-aarch64-linux-gnu gcc gcc-15
+  gcc-15-aarch64-linux-gnu gcc-15-base gcc-aarch64-linux-gnu gettext
+  gettext-base libasan8 libatomic1 libbinutils libblkid1 libbz2-1.0 libc-bin
+  libc-dev-bin libc-gconv-modules-extra libc6 libc6-dev libcc1-0 libcrypt-dev
+  libctf-nobfd0 libctf0 libdpkg-perl libgcc-15-dev libgdbm-compat4t64
+  libgdbm6t64 libgomp1 libgprofng0 libhwasan0 libisl23 libitm1 libjansson4
+  liblsan0 liblzma5 libmount1 libmpc3 libmpfr6 libperl5.40 libsframe3
+  libsmartcols1 libssl3t64 libstdc++-15-dev libtsan2 libubsan1 libunistring5
+  libuuid1 libxml2-16 linux-libc-dev login lto-disabled-list make mount
+  openssl openssl-provider-legacy patch perl perl-base perl-modules-5.40
+  rpcsvc-proto util-linux xz-utils
+Suggested packages:
+  binutils-doc gprofng-gui binutils-gold bzip2-doc cpp-doc gcc-15-locales
+  cpp-15-doc debian-keyring debian-tag2upload-keyring gcc-15-doc gcc-multilib
+  manpages-dev autoconf automake libtool flex bison gdb gcc-doc
+  gdb-aarch64-linux-gnu autopoint gettext-doc libasprintf-dev libgettextpo-dev
+  gnulib-l10n libc-devtools glibc-doc sq | sqop | rsop | gosop
+  | pgpainless-cli | gpg-sq | gnupg git bzr gdbm-l10n libstdc++-15-doc
+  make-doc diffutils-doc perl-doc libterm-readline-gnu-perl
+  | libterm-readline-perl-perl libtap-harness-archive-perl default-mta
+  | mail-transport-agent graphviz procmail
+Recommended packages:
+  fakeroot gnupg | sq | sqop | rsop | gosop | pgpainless-cli | gpg-sq
+  libalgorithm-merge-perl curl | wget | lynx manpages manpages-dev
+  libfile-fcntllock-perl liblocale-gettext-perl netbase less
+The following NEW packages will be installed:
+  binutils binutils-aarch64-linux-gnu binutils-common bsdextrautils
+  build-essential bzip2 ca-certificates cpp cpp-15 cpp-15-aarch64-linux-gnu
+  cpp-aarch64-linux-gnu diffstat dpkg-dev ed g++ g++-15
+  g++-15-aarch64-linux-gnu g++-aarch64-linux-gnu gcc gcc-15
+  gcc-15-aarch64-linux-gnu gcc-15-base gcc-aarch64-linux-gnu gettext
+  gettext-base libasan8 libatomic1 libbinutils libc-dev-bin libc6-dev libcc1-0
+  libcrypt-dev libctf-nobfd0 libctf0 libdpkg-perl libgcc-15-dev
+  libgdbm-compat4t64 libgdbm6t64 libgomp1 libgprofng0 libhwasan0 libisl23
+  libitm1 libjansson4 liblsan0 libmpc3 libmpfr6 libperl5.40 libsframe3
+  libstdc++-15-dev libtsan2 libubsan1 libunistring5 libxml2-16 linux-libc-dev
+  lto-disabled-list make openssl patch perl perl-modules-5.40 quilt
+  rpcsvc-proto xz-utils
+The following packages will be upgraded:
+  bsdutils libblkid1 libbz2-1.0 libc-bin libc-gconv-modules-extra libc6
+  liblzma5 libmount1 libsmartcols1 libssl3t64 libuuid1 login mount
+  openssl-provider-legacy perl-base util-linux
+16 upgraded, 64 newly installed, 0 to remove and 15 not upgraded.
+Need to get 97.2 MB of archives.
+After this operation, 339 MB of additional disk space will be used.
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/p/perl/perl-base_5.40.1-7ubuntu0.3_arm64.deb' perl-base_5.40.1-7ubuntu0.3_arm64.deb 1787114 SHA256:d2b006b56ae3ca20676581b2918b7b4250e78fc4fee2407a4bea0ba218eba7ef
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/glibc/libc-gconv-modules-extra_2.43-2ubuntu2.4_arm64.deb' libc-gconv-modules-extra_2.43-2ubuntu2.4_arm64.deb 1382148 SHA256:9d4d8cfb9e75eb6c7324c5d9c548eb5eaa4ea584fe27627069a9bdad35818eda
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/glibc/libc6_2.43-2ubuntu2.4_arm64.deb' libc6_2.43-2ubuntu2.4_arm64.deb 1642036 SHA256:1652597c8c3419b298d8a87dd3d8eea1fdc5a1abd9bccb5a66b928f92ec463c9
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/u/util-linux/libblkid1_2.41.3-3ubuntu2.2_arm64.deb' libblkid1_2.41.3-3ubuntu2.2_arm64.deb 124648 SHA256:4395cd18479bc88a7109fc199475802ebfc007de07f1cf15c85f26003fdd75ae
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/u/util-linux/libmount1_2.41.3-3ubuntu2.2_arm64.deb' libmount1_2.41.3-3ubuntu2.2_arm64.deb 156826 SHA256:359be63102c6bbd4052ed2f5b3318f5f1c762b4ac1826a00f0d8a480b942ae53
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/u/util-linux/libsmartcols1_2.41.3-3ubuntu2.2_arm64.deb' libsmartcols1_2.41.3-3ubuntu2.2_arm64.deb 83902 SHA256:ba741b3a57a809fd5606ec6340191e0448761a04a803dbab9f227b266f2d4670
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/u/util-linux/mount_2.41.3-3ubuntu2.2_arm64.deb' mount_2.41.3-3ubuntu2.2_arm64.deb 134014 SHA256:522c5c23f66948f285c37fd978ceaef2df8dc3b3f0cd19d51499132b2f9f4421
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/u/util-linux/libuuid1_2.41.3-3ubuntu2.2_arm64.deb' libuuid1_2.41.3-3ubuntu2.2_arm64.deb 36404 SHA256:1298f27861f60729a4d7ad86fa906aaebdbc88be9fc3316e9eb154de4f0792e3
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/u/util-linux/util-linux_2.41.3-3ubuntu2.2_arm64.deb' util-linux_2.41.3-3ubuntu2.2_arm64.deb 1055344 SHA256:9321d8aafe3189f732d0ee85a1b1253820fd8ce823a55c65f8d6109d2fbaf2fb
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/glibc/libc-bin_2.43-2ubuntu2.4_arm64.deb' libc-bin_2.43-2ubuntu2.4_arm64.deb 597592 SHA256:7dae6f6c5b11fb6a8acf9f8e6cba29a06a034759a9849ba96bd340ac40400545
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/u/util-linux/login_4.16.0-2%2breally2.41.3-3ubuntu2.2_arm64.deb' login_1%3a4.16.0-2+really2.41.3-3ubuntu2.2_arm64.deb 85922 SHA256:7cef4d2f3b29fbdfa74112ee1eb3e1f0fee79b853321afaaa72a866d59c987d7
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/b/bzip2/libbz2-1.0_1.0.8-6ubuntu0.1_arm64.deb' libbz2-1.0_1.0.8-6ubuntu0.1_arm64.deb 34078 SHA256:42c8e4182e850a49f6fe1e10013ca13931513a037875f768a505db77305aa30e
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/x/xz-utils/liblzma5_5.8.3-1ubuntu0.1_arm64.deb' liblzma5_5.8.3-1ubuntu0.1_arm64.deb 144538 SHA256:3c36c4f4844e20891739a66ab67fdb33c58313c7bc6e8423a575fc1a17448921
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/o/openssl/openssl-provider-legacy_3.5.5-1ubuntu3.7_arm64.deb' openssl-provider-legacy_3.5.5-1ubuntu3.7_arm64.deb 38424 SHA256:757ec89120fe3f418a842342b3a0c596b89b0e3fb0ba770347dda1219f219bbd
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/o/openssl/libssl3t64_3.5.5-1ubuntu3.7_arm64.deb' libssl3t64_3.5.5-1ubuntu3.7_arm64.deb 2769448 SHA256:9fe87b6beec5de636a70e4fb6076517a39f5053c7e23e628c9459b94f85c75ff
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/u/util-linux/bsdutils_2.41.3-3ubuntu2.2_arm64.deb' bsdutils_1%3a2.41.3-3ubuntu2.2_arm64.deb 82932 SHA256:57e31144cb7943e1b3b5e317f3c1069ca597643a6955b6d879cbec89a4ac0a46
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/o/openssl/openssl_3.5.5-1ubuntu3.7_arm64.deb' openssl_3.5.5-1ubuntu3.7_arm64.deb 1222930 SHA256:623ea7ec0eb80da3f40e89e3318a4e82d4c64146d206c90cabbce6998d822fa8
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/c/ca-certificates/ca-certificates_20260816ubuntu0.26.04.1_all.deb' ca-certificates_20260816ubuntu0.26.04.1_all.deb 137978 SHA256:5b6326f1932cfd7be57130561dc78192f09ed9f58bfbe6606ed0c50510c3b6cd
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-16/libatomic1_16-20260322-1ubuntu1_arm64.deb' libatomic1_16-20260322-1ubuntu1_arm64.deb 11116 SHA256:b9b2c94062924229201e25b694536119b153146abb8f464e31afa9e422d07d22
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/libu/libunistring/libunistring5_1.3-2build1_arm64.deb' libunistring5_1.3-2build1_arm64.deb 600874 SHA256:1a73d3d7690e26f926d7af025b44d6d57c2dd1e0abb35c0d5b1b11f4b9b7f4da
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/libx/libxml2/libxml2-16_2.15.2%2bdfsg-0.1ubuntu0.3_arm64.deb' libxml2-16_2.15.2+dfsg-0.1ubuntu0.3_arm64.deb 606094 SHA256:fee1ab90009a29b6fa8be40dd48c68c1ecdb021ef9439f59d91c030491518731
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/u/util-linux/bsdextrautils_2.41.3-3ubuntu2.2_arm64.deb' bsdextrautils_2.41.3-3ubuntu2.2_arm64.deb 84164 SHA256:bb6343da6ff834be6c94effbb91558924dfcc0e8a82ce85158c19058845899fa
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/e/ed/ed_1.22.4-1_arm64.deb' ed_1.22.4-1_arm64.deb 58048 SHA256:b2c77adfc0aebc992c2e125277e44dd588a8cf3e904afdce45df7ce561bbf1f8
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gettext/gettext-base_0.23.2-1_arm64.deb' gettext-base_0.23.2-1_arm64.deb 40612 SHA256:513c94e640b4a2a8bceeba66e902f79d6a15b771fe4216213902ed714be3f099
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gdbm/libgdbm6t64_1.26-1build1_arm64.deb' libgdbm6t64_1.26-1build1_arm64.deb 36098 SHA256:b7a3d04d3a4d66bbe0ee08a97dbd0a41494b1baa8eedcafbe269fada53e3781c
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/j/jansson/libjansson4_2.14-2build4_arm64.deb' libjansson4_2.14-2build4_arm64.deb 34572 SHA256:ac36a808bb47c2f21337c131b5ae2510ced2efdcfe8a471073d335f4e9ad5098
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/x/xz-utils/xz-utils_5.8.3-1ubuntu0.1_arm64.deb' xz-utils_5.8.3-1ubuntu0.1_arm64.deb 405516 SHA256:ec24cc58464c981a31bbc55427815922a5af427e06f7f140ddc30e47357b8bb1
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/b/binutils/libsframe3_2.46-3ubuntu2_arm64.deb' libsframe3_2.46-3ubuntu2_arm64.deb 21544 SHA256:8f423b964f7f77946eca229256ebaef5e260546f5b458a1438ee2ab86e6ac689
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/b/binutils/binutils-common_2.46-3ubuntu2_arm64.deb' binutils-common_2.46-3ubuntu2_arm64.deb 221614 SHA256:18e619412ee478765b370ae73bda3ef54dd0aaa1028953f804b082368e3b0cd4
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/b/binutils/libbinutils_2.46-3ubuntu2_arm64.deb' libbinutils_2.46-3ubuntu2_arm64.deb 812154 SHA256:292c5ba71f96e31ebdda5b82f445d85a0aea3ae71cdf52b8d4730eb7cb89dcdc
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/b/binutils/libgprofng0_2.46-3ubuntu2_arm64.deb' libgprofng0_2.46-3ubuntu2_arm64.deb 793018 SHA256:d036c04973db42ce1e390937e407d2390ae9ac4f503e8b55d1243c31311cc316
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/b/binutils/libctf-nobfd0_2.46-3ubuntu2_arm64.deb' libctf-nobfd0_2.46-3ubuntu2_arm64.deb 104076 SHA256:e1c8d7aea62a809c06c57f692d126ae161835b5ab4923c271c26d29d8f954b48
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/b/binutils/libctf0_2.46-3ubuntu2_arm64.deb' libctf0_2.46-3ubuntu2_arm64.deb 101188 SHA256:07fc52f17e42cb4006c16981e006e14afc5d0fba016946b271bafcc8a51820e0
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/b/binutils/binutils-aarch64-linux-gnu_2.46-3ubuntu2_arm64.deb' binutils-aarch64-linux-gnu_2.46-3ubuntu2_arm64.deb 1012368 SHA256:26ff0ce39c131c35432e07cf62120ca784c6d08f881c40d0b0cd7196c06a705a
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/b/binutils/binutils_2.46-3ubuntu2_arm64.deb' binutils_2.46-3ubuntu2_arm64.deb 227974 SHA256:1b5105f405c42b7e336a16f450bb30f3f589ffe28faf55db84a9dc9a4aeeee1b
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/glibc/libc-dev-bin_2.43-2ubuntu2.4_arm64.deb' libc-dev-bin_2.43-2ubuntu2.4_arm64.deb 22566 SHA256:273f996f4325719c300e2095de5b698ac4de5cf13f3d910a48e9e4994a5cb31c
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/l/linux/linux-libc-dev_7.0.0-38.38_arm64.deb' linux-libc-dev_7.0.0-38.38_arm64.deb 1687552 SHA256:217f6c4a5c6cb56b985cbf05a8f276dda69bc2c47f7849363633fed1c44985b7
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/r/rpcsvc-proto/rpcsvc-proto_1.4.3-1build1_arm64.deb' rpcsvc-proto_1.4.3-1build1_arm64.deb 65578 SHA256:1d9b9424baee119a4c654e5c9d4a35638468996c74a6b493d07ad44693bf6f33
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/glibc/libc6-dev_2.43-2ubuntu2.4_arm64.deb' libc6-dev_2.43-2ubuntu2.4_arm64.deb 1843700 SHA256:f6f7705d3e6bb982c173a42cc5b2516eddebe2d846c4861ee7d7c9d66ebee916
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-15/gcc-15-base_15.2.0-16ubuntu1_arm64.deb' gcc-15-base_15.2.0-16ubuntu1_arm64.deb 39048 SHA256:d49ef1f45b0b2c9437265502bef20a2b22895a8dafce02194c2acbed2f5c51eb
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/i/isl/libisl23_0.27-1build1_arm64.deb' libisl23_0.27-1build1_arm64.deb 675662 SHA256:7330868538614d28d452624846a30c8f253322b32de3630a4674dd7852fa5aa4
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/m/mpfr4/libmpfr6_4.2.2-3_arm64.deb' libmpfr6_4.2.2-3_arm64.deb 344796 SHA256:cfe352c39da9744f0c06666a788d6a6f624e97cc279d84a18c2f7f9f9b72f6bc
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/m/mpclib3/libmpc3_1.3.1-3_arm64.deb' libmpc3_1.3.1-3_arm64.deb 55684 SHA256:514b0bd679855353b1b72cba66f3fe880e53ce40ebbd98b7f04d812b79a07358
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-15/cpp-15-aarch64-linux-gnu_15.2.0-16ubuntu1_arm64.deb' cpp-15-aarch64-linux-gnu_15.2.0-16ubuntu1_arm64.deb 11723684 SHA256:57e316dfd840b2483a7e9db8af05f240712afa0f15f2d0f3a4426723c11646a7
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-15/cpp-15_15.2.0-16ubuntu1_arm64.deb' cpp-15_15.2.0-16ubuntu1_arm64.deb 1030 SHA256:e42a9af99852ed156b42800c4a61fd0b7d68e30982d935ad3f2833ed9a9fb7fc
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-defaults/cpp-aarch64-linux-gnu_15.2.0-5ubuntu1_arm64.deb' cpp-aarch64-linux-gnu_4%3a15.2.0-5ubuntu1_arm64.deb 5840 SHA256:dab86f1d376b6c25552f967e90349d1366886ea34f9cd6b9f874917e3e4fad6f
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-defaults/cpp_15.2.0-5ubuntu1_arm64.deb' cpp_4%3a15.2.0-5ubuntu1_arm64.deb 22424 SHA256:f02270e4ffc715801a591f3be361ecbc80a8bcca7bfa9cfd76161d553bbe1aef
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-16/libcc1-0_16-20260322-1ubuntu1_arm64.deb' libcc1-0_16-20260322-1ubuntu1_arm64.deb 51318 SHA256:be244d570f0ba743103d00a6d6f2a2352b3ec55fa2aac2bdf807988395dc6c68
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-16/libgomp1_16-20260322-1ubuntu1_arm64.deb' libgomp1_16-20260322-1ubuntu1_arm64.deb 153930 SHA256:a9d1fc09eebccb7049b408ef51362ad6c44d0421570d47410af072b52d14481e
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-16/libitm1_16-20260322-1ubuntu1_arm64.deb' libitm1_16-20260322-1ubuntu1_arm64.deb 27806 SHA256:190e0d37e04565c1ccd34869b3eb7af6600c9196689c102d43046ad370aef49c
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-16/libasan8_16-20260322-1ubuntu1_arm64.deb' libasan8_16-20260322-1ubuntu1_arm64.deb 2998866 SHA256:ae30b45c86daf779ebaf53fcf9c37b091202cf547bab64c12895d377941e4547
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-16/liblsan0_16-20260322-1ubuntu1_arm64.deb' liblsan0_16-20260322-1ubuntu1_arm64.deb 1336400 SHA256:b969830163936911594c3f60e1c525171ac78e46760e3734aa8197e13dfc6d74
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-16/libtsan2_16-20260322-1ubuntu1_arm64.deb' libtsan2_16-20260322-1ubuntu1_arm64.deb 2743696 SHA256:ad3d232427bf5c2c3ba8e048db2d083f5eca14c9ef813630df0073b7f9fc8904
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-16/libubsan1_16-20260322-1ubuntu1_arm64.deb' libubsan1_16-20260322-1ubuntu1_arm64.deb 1192592 SHA256:a96cad95dc058f8b82951f3a0df373477e8aa0f5664569c7dcbc08891f951a71
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-16/libhwasan0_16-20260322-1ubuntu1_arm64.deb' libhwasan0_16-20260322-1ubuntu1_arm64.deb 1668138 SHA256:1ebe901005e414249d062eb0cee54b1d0b17f777913c28d321a3dfd648561583
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-15/libgcc-15-dev_15.2.0-16ubuntu1_arm64.deb' libgcc-15-dev_15.2.0-16ubuntu1_arm64.deb 2600202 SHA256:d088c97ff459ab243eb369666dfc43b92f278556e45d72c2def4d7657d728fe4
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-15/gcc-15-aarch64-linux-gnu_15.2.0-16ubuntu1_arm64.deb' gcc-15-aarch64-linux-gnu_15.2.0-16ubuntu1_arm64.deb 23124142 SHA256:e3483ce05b22e201393a40a8cea4414144dc73f45ca902dcc026123f76312d6a
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-15/gcc-15_15.2.0-16ubuntu1_arm64.deb' gcc-15_15.2.0-16ubuntu1_arm64.deb 528112 SHA256:772d57b952842e600fd7823b2aa217394d78b70756406a6b0e89297eb8d03fe8
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-defaults/gcc-aarch64-linux-gnu_15.2.0-5ubuntu1_arm64.deb' gcc-aarch64-linux-gnu_4%3a15.2.0-5ubuntu1_arm64.deb 1206 SHA256:5d6a8f17d87333843ff5f180fb6dda171441068bdda002b047a2c3ae73c15607
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-defaults/gcc_15.2.0-5ubuntu1_arm64.deb' gcc_4%3a15.2.0-5ubuntu1_arm64.deb 5004 SHA256:dde3a5ce12ecee04b40220d80335123f0070bb154f51b75338e08b69588318bb
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-15/libstdc%2b%2b-15-dev_15.2.0-16ubuntu1_arm64.deb' libstdc++-15-dev_15.2.0-16ubuntu1_arm64.deb 2871808 SHA256:f3a53cb1834a15fda5b509332a0f473ca4f1f0dd9a04da355c939df449914f9b
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-15/g%2b%2b-15-aarch64-linux-gnu_15.2.0-16ubuntu1_arm64.deb' g++-15-aarch64-linux-gnu_15.2.0-16ubuntu1_arm64.deb 13198884 SHA256:f119b847153c7d2b096e4e2130bec64e0361154350289eefb37292a5b20596d4
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-15/g%2b%2b-15_15.2.0-16ubuntu1_arm64.deb' g++-15_15.2.0-16ubuntu1_arm64.deb 26746 SHA256:80ce785d7c6cfc9a4801e53e8d9b476cc0920333ed3fe3df2617b058650e6f91
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-defaults/g%2b%2b-aarch64-linux-gnu_15.2.0-5ubuntu1_arm64.deb' g++-aarch64-linux-gnu_4%3a15.2.0-5ubuntu1_arm64.deb 956 SHA256:eb740cf8b386e93a9a4e5a90c461786203b04b85099918d8a74686bde8f550f6
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gcc-defaults/g%2b%2b_15.2.0-5ubuntu1_arm64.deb' g++_4%3a15.2.0-5ubuntu1_arm64.deb 1086 SHA256:61f2e44db8f81ff52b9c116970311a1a38d455b6d54860196db758f59b62b0d2
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/m/make-dfsg/make_4.4.1-3_arm64.deb' make_4.4.1-3_arm64.deb 194068 SHA256:f6221e4b7865332ef903bbfb5763c8e2c0aa98ecf2ee78cc73ba59ad6504d077
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/p/perl/perl-modules-5.40_5.40.1-7ubuntu0.3_all.deb' perl-modules-5.40_5.40.1-7ubuntu0.3_all.deb 3212300 SHA256:19c81efa2c37662080df7d44289b9b5c516205ee8cf9c54410b0031ff2208e41
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gdbm/libgdbm-compat4t64_1.26-1build1_arm64.deb' libgdbm-compat4t64_1.26-1build1_arm64.deb 6650 SHA256:a957fee7b87417eb5fd08c935116f7d1456b7ae18bb09ab0ef2de1c9f1e4ccd8
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/p/perl/libperl5.40_5.40.1-7ubuntu0.3_arm64.deb' libperl5.40_5.40.1-7ubuntu0.3_arm64.deb 4784030 SHA256:d2309658858c505ee5077e5a7da09ad8685cb943e27a87269d10f7db1923ec1a
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/p/perl/perl_5.40.1-7ubuntu0.3_arm64.deb' perl_5.40.1-7ubuntu0.3_arm64.deb 262084 SHA256:12980766577eace9002d8eefab2d2e18c775a982fa5b882ff693cfe522c9d6a2
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/d/dpkg/libdpkg-perl_1.23.7ubuntu1_all.deb' libdpkg-perl_1.23.7ubuntu1_all.deb 289184 SHA256:984ca70b4b4af43812abeb6aa890ed0e8b7a725c9ac193b00d4df470fca1c1fe
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/b/bzip2/bzip2_1.0.8-6ubuntu0.1_arm64.deb' bzip2_1.0.8-6ubuntu0.1_arm64.deb 34092 SHA256:e4d4a0cc54a84bcdfe16bbac64bb592fd88e0d81b270c491d6bde322c8e6d120
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/p/patch/patch_2.8-2build1_arm64.deb' patch_2.8-2build1_arm64.deb 93442 SHA256:8dc889b1bff1760019eddd4a7fa77afd6a76256d43b0e168c61390a54208fc1a
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/l/lto-disabled-list/lto-disabled-list_79_all.deb' lto-disabled-list_79_all.deb 14208 SHA256:4201421a400172721d7e8f39db7f4ae1b65fe06f6ed8151b3346a2809871583b
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/d/dpkg/dpkg-dev_1.23.7ubuntu1_all.deb' dpkg-dev_1.23.7ubuntu1_all.deb 1061798 SHA256:507b526fd78f9dff89696bbc3085af3117059f37fd281542778ac8b97be44690
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/libx/libxcrypt/libcrypt-dev_4.5.1-1_arm64.deb' libcrypt-dev_1%3a4.5.1-1_arm64.deb 123074 SHA256:21e20f89843baf60f09807c13d2aa1f7ba0a12992a32bbbf0dd4e1fe301a14a3
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/b/build-essential/build-essential_12.12ubuntu2.26.04.2_arm64.deb' build-essential_12.12ubuntu2.26.04.2_arm64.deb 5158 SHA256:71f6f12ced2b38f656befccf232599abbc9457ddced1b582e9ed3027773f7a5c
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/d/diffstat/diffstat_1.68-1_arm64.deb' diffstat_1.68-1_arm64.deb 29104 SHA256:12acf105950077c95b41e59d1e471a455c753b50e6d540d505d527bbe430e6c1
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/main/g/gettext/gettext_0.23.2-1_arm64.deb' gettext_0.23.2-1_arm64.deb 997538 SHA256:58ec45fd6a70e3980f84fa388111229023c8463bde75b37aa4a3d3145c49b086
+'https://snapshot.ubuntu.com/ubuntu/20261024T000000Z/pool/universe/q/quilt/quilt_0.69-0.1_all.deb' quilt_0.69-0.1_all.deb 437230 SHA256:8822c6941bdbf9ef0ef4dcee777acaf762eb02e1abd138105131162e859b4ca2

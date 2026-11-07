@@ -1,0 +1,39 @@
+{
+  "rootfs": {
+    "plan": "C:\\Users\\LYC\\Desktop\\temp\\op13-linux\\records\\current-chat-20261101-01a19486\\resume-r279-artifacts\\rootfs-transport\\apt-package-plan.txt",
+    "packages": 768,
+    "bytes": 469499582
+  },
+  "resources": {
+    "bootstrap": {
+      "plan": "C:\\Users\\LYC\\Desktop\\temp\\op13-linux\\repo-cache-work\\resource-plans\\bootstrap.txt",
+      "packages": 80,
+      "bytes": 97249724
+    },
+    "dependencies": {
+      "plan": "C:\\Users\\LYC\\Desktop\\temp\\op13-linux\\repo-cache-work\\resource-plans\\dependencies.txt",
+      "packages": 389,
+      "bytes": 230166450
+    },
+    "unique_cached_files": 469
+  },
+  "sources": {
+    "ubuntu-base.tar.gz": {
+      "sha256": "5a1906794ced63a71a8119c3f211ef5f0bbe0a243001b4bbd41fdf80c5b219fd",
+      "bytes": 35092106
+    },
+    "resources_1.10.2.orig.tar.gz": {
+      "sha256": "aeaa9440831d1a2b839b5f005854a11d0becc9f2fc14e997b7f4166bf27b4c41",
+      "bytes": 1229094
+    },
+    "resources_1.10.2-0ubuntu3.1.debian.tar.xz": {
+      "sha256": "c974baa8daf5b7869e9780f471e56b7d49e9c7ffa537187950b24f865bc1eb6f",
+      "bytes": 16415876
+    },
+    "resources_1.10.2-0ubuntu3.1.dsc": {
+      "sha256": "77f66037d178add27fd461e3d5babdf6c9e0c0ec5fca69fb1672a14299629c82",
+      "bytes": 4873
+    }
+  },
+  "pass": true
+}

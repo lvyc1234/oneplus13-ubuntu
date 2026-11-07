@@ -1,0 +1,163 @@
+{
+  "schema": 1,
+  "tag": "cache-oneplus13-r280",
+  "source_commit": "bc45b1d07d8a124ca4e7b6b364155c5eabe82995",
+  "created": "2026-11-05",
+  "components": {
+    "sources": {
+      "file": "oneplus13-source-cache-r280.tar",
+      "bytes": 52756480,
+      "sha256": "0ce1fbe7256b9e13d64024a21bf186cb454ae15f7b55254123c852b15baf9a80",
+      "chunks": [
+        {
+          "file": "oneplus13-source-cache-r280.tar.000.part",
+          "bytes": 50331648,
+          "sha256": "28b8372815d5df1e1cb7745b5e53791faaad02ad812b9f4a2835e2d56f0995fb",
+          "url": "https://raw.githubusercontent.com/lvyc1234/oneplus13-ubuntu/cache-oneplus13-r280/cache/oneplus13/r280/chunks/oneplus13-source-cache-r280.tar.000.part"
+        },
+        {
+          "file": "oneplus13-source-cache-r280.tar.001.part",
+          "bytes": 2424832,
+          "sha256": "9f02d1247cdd5906d31e4d67defece8c896155f4bbefb563ac595019a4c3e590",
+          "url": "https://raw.githubusercontent.com/lvyc1234/oneplus13-ubuntu/cache-oneplus13-r280/cache/oneplus13/r280/chunks/oneplus13-source-cache-r280.tar.001.part"
+        }
+      ]
+    },
+    "apt-lists": {
+      "file": "oneplus13-apt-lists-r280.tar",
+      "bytes": 92723200,
+      "sha256": "99f091674ef8f17463f7a40f195463c6ce6ed66cb9dc96255bf65a453e4bb063",
+      "chunks": [
+        {
+          "file": "oneplus13-apt-lists-r280.tar.000.part",
+          "bytes": 50331648,
+          "sha256": "ed772ee9e70643e013a1af504a731c4d6c7971507670214cd8f997013a86c6fb",
+          "url": "https://raw.githubusercontent.com/lvyc1234/oneplus13-ubuntu/cache-oneplus13-r280/cache/oneplus13/r280/chunks/oneplus13-apt-lists-r280.tar.000.part"
+        },
+        {
+          "file": "oneplus13-apt-lists-r280.tar.001.part",
+          "bytes": 42391552,
+          "sha256": "3d4e7f6b4aff1e0a49a32b8b5c3080520a1c8a8497583b97f9fa98f06821876e",
+          "url": "https://raw.githubusercontent.com/lvyc1234/oneplus13-ubuntu/cache-oneplus13-r280/cache/oneplus13/r280/chunks/oneplus13-apt-lists-r280.tar.001.part"
+        }
+      ]
+    },
+    "rootfs-debs": {
+      "file": "oneplus13-rootfs-debs-r280.tar",
+      "bytes": 470149120,
+      "sha256": "d3d26d0485d3a3229a72f81365fa8168f14ea8fa37448bcb1018f0f0c99ebccb",
+      "chunks": [
+        {
+          "file": "oneplus13-rootfs-debs-r280.tar.000.part",
+          "bytes": 50331648,
+          "sha256": "8add52c0f0a0886b474899808a801312f69913949fd3470d3f9428741aa7fbce",
+          "url": "https://raw.githubusercontent.com/lvyc1234/oneplus13-ubuntu/cache-oneplus13-r280/cache/oneplus13/r280/chunks/oneplus13-rootfs-debs-r280.tar.000.part"
+        },
+        {
+          "file": "oneplus13-rootfs-debs-r280.tar.001.part",
+          "bytes": 50331648,
+          "sha256": "34f71c9a1bac9e32353bba6622a214ed905e9203df9ff3830aaeb0eaa0251faa",
+          "url": "https://raw.githubusercontent.com/lvyc1234/oneplus13-ubuntu/cache-oneplus13-r280/cache/oneplus13/r280/chunks/oneplus13-rootfs-debs-r280.tar.001.part"
+        },
+        {
+          "file": "oneplus13-rootfs-debs-r280.tar.002.part",
+          "bytes": 50331648,
+          "sha256": "0aae71ae35bef18a004d20570cd62b7de71e1db3a417fa5ba63c5cff8d53e4b5",
+          "url": "https://raw.githubusercontent.com/lvyc1234/oneplus13-ubuntu/cache-oneplus13-r280/cache/oneplus13/r280/chunks/oneplus13-rootfs-debs-r280.tar.002.part"
+        },
+        {
+          "file": "oneplus13-rootfs-debs-r280.tar.003.part",
+          "bytes": 50331648,
+          "sha256": "7df301dd2d1e4e373733e17309d892e946bd919e606da484a15eaaf9501deff2",
+          "url": "https://raw.githubusercontent.com/lvyc1234/oneplus13-ubuntu/cache-oneplus13-r280/cache/oneplus13/r280/chunks/oneplus13-rootfs-debs-r280.tar.003.part"
+        },
+        {
+          "file": "oneplus13-rootfs-debs-r280.tar.004.part",
+          "bytes": 50331648,
+          "sha256": "a0737ee02978843a828b769d46959a30b95e6e3db91c3a5e00c667512884d0c1",
+          "url": "https://raw.githubusercontent.com/lvyc1234/oneplus13-ubuntu/cache-oneplus13-r280/cache/oneplus13/r280/chunks/oneplus13-rootfs-debs-r280.tar.004.part"
+        },
+        {
+          "file": "oneplus13-rootfs-debs-r280.tar.005.part",
+          "bytes": 50331648,
+          "sha256": "44463654fc14b779ff8620115221b8b5524f186d071371bdfcfe4b50006adfd7",
+          "url": "https://raw.githubusercontent.com/lvyc1234/oneplus13-ubuntu/cache-oneplus13-r280/cache/oneplus13/r280/chunks/oneplus13-rootfs-debs-r280.tar.005.part"
+        },
+        {
+          "file": "oneplus13-rootfs-debs-r280.tar.006.part",
+          "bytes": 50331648,
+          "sha256": "385f03035b6311b2d768ae42375bf972fc15815ef32baf6bceb4542c110bbf33",
+          "url": "https://raw.githubusercontent.com/lvyc1234/oneplus13-ubuntu/cache-oneplus13-r280/cache/oneplus13/r280/chunks/oneplus13-rootfs-debs-r280.tar.006.part"
+        },
+        {
+          "file": "oneplus13-rootfs-debs-r280.tar.007.part",
+          "bytes": 50331648,
+          "sha256": "ea751f8b2f5f756c2c9c32ed2389011a68fccabc0b80630f546f81a4a447b9fd",
+          "url": "https://raw.githubusercontent.com/lvyc1234/oneplus13-ubuntu/cache-oneplus13-r280/cache/oneplus13/r280/chunks/oneplus13-rootfs-debs-r280.tar.007.part"
+        },
+        {
+          "file": "oneplus13-rootfs-debs-r280.tar.008.part",
+          "bytes": 50331648,
+          "sha256": "013503fba801740c29d130b15006d3cfa8eed68224ea79065647e0e71568e907",
+          "url": "https://raw.githubusercontent.com/lvyc1234/oneplus13-ubuntu/cache-oneplus13-r280/cache/oneplus13/r280/chunks/oneplus13-rootfs-debs-r280.tar.008.part"
+        },
+        {
+          "file": "oneplus13-rootfs-debs-r280.tar.009.part",
+          "bytes": 17164288,
+          "sha256": "3d909917ac47fd7d699fbe1a76d5e1079a9b681e18532d5289650d9a9f14439c",
+          "url": "https://raw.githubusercontent.com/lvyc1234/oneplus13-ubuntu/cache-oneplus13-r280/cache/oneplus13/r280/chunks/oneplus13-rootfs-debs-r280.tar.009.part"
+        }
+      ]
+    },
+    "resources-debs": {
+      "file": "oneplus13-resource-debs-r280.tar",
+      "bytes": 327792640,
+      "sha256": "e9093b48a1fd796e7b6b58bac9718bab8cae2e32dddcbe2059141d38ad608e83",
+      "chunks": [
+        {
+          "file": "oneplus13-resource-debs-r280.tar.000.part",
+          "bytes": 50331648,
+          "sha256": "a5aba591af98c4ca4b3ebc2ad5d4d727fcaeced13c9beeeaf0150e14857164cc",
+          "url": "https://raw.githubusercontent.com/lvyc1234/oneplus13-ubuntu/cache-oneplus13-r280/cache/oneplus13/r280/chunks/oneplus13-resource-debs-r280.tar.000.part"
+        },
+        {
+          "file": "oneplus13-resource-debs-r280.tar.001.part",
+          "bytes": 50331648,
+          "sha256": "45847e143b71e9c419876c95076599add046a9682b9303f229bd21aea94b18c0",
+          "url": "https://raw.githubusercontent.com/lvyc1234/oneplus13-ubuntu/cache-oneplus13-r280/cache/oneplus13/r280/chunks/oneplus13-resource-debs-r280.tar.001.part"
+        },
+        {
+          "file": "oneplus13-resource-debs-r280.tar.002.part",
+          "bytes": 50331648,
+          "sha256": "6a35e86d5aa941b61cfe59f7f79b408e98481c83451239e6a2007c1b1b9a9ed0",
+          "url": "https://raw.githubusercontent.com/lvyc1234/oneplus13-ubuntu/cache-oneplus13-r280/cache/oneplus13/r280/chunks/oneplus13-resource-debs-r280.tar.002.part"
+        },
+        {
+          "file": "oneplus13-resource-debs-r280.tar.003.part",
+          "bytes": 50331648,
+          "sha256": "0ce1f82455e98740e06633da8102c26f6bd6d6341e0e903a543dea845a400f47",
+          "url": "https://raw.githubusercontent.com/lvyc1234/oneplus13-ubuntu/cache-oneplus13-r280/cache/oneplus13/r280/chunks/oneplus13-resource-debs-r280.tar.003.part"
+        },
+        {
+          "file": "oneplus13-resource-debs-r280.tar.004.part",
+          "bytes": 50331648,
+          "sha256": "e61f29b1100c32cc09e033e0cadfc49f4907dce0c6e961cc0f415286ec853c3c",
+          "url": "https://raw.githubusercontent.com/lvyc1234/oneplus13-ubuntu/cache-oneplus13-r280/cache/oneplus13/r280/chunks/oneplus13-resource-debs-r280.tar.004.part"
+        },
+        {
+          "file": "oneplus13-resource-debs-r280.tar.005.part",
+          "bytes": 50331648,
+          "sha256": "de3c163e87c6291e77cf51b7893b01dac079d7423e4ef1829305dfe68179d4f0",
+          "url": "https://raw.githubusercontent.com/lvyc1234/oneplus13-ubuntu/cache-oneplus13-r280/cache/oneplus13/r280/chunks/oneplus13-resource-debs-r280.tar.005.part"
+        },
+        {
+          "file": "oneplus13-resource-debs-r280.tar.006.part",
+          "bytes": 25802752,
+          "sha256": "9fa6cd29c6a4ef315a2325c91f045b1b707e7e8ecc10cf401424818597b57724",
+          "url": "https://raw.githubusercontent.com/lvyc1234/oneplus13-ubuntu/cache-oneplus13-r280/cache/oneplus13/r280/chunks/oneplus13-resource-debs-r280.tar.006.part"
+        }
+      ]
+    }
+  },
+  "scope": "LOCKED_UBUNTU_AND_RESOURCES_BUILD_INPUTS"
+}

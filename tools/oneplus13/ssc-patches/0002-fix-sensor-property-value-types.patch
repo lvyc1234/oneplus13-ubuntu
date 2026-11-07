@@ -1,0 +1,92 @@
+--- a/src/libssc-sensor.c
++++ b/src/libssc-sensor.c
+@@ -860,26 +860,26 @@
+ 	g_object_class_install_property (object_class, PROP_DATA_TYPE, properties[PROP_DATA_TYPE]);
+ 
+ 	properties[PROP_STREAM_TYPE] =
+-		g_param_spec_string (SSC_SENSOR_STREAM_TYPE,
++		g_param_spec_uint (SSC_SENSOR_STREAM_TYPE,
+ 				     "Stream type",
+ 				     "The stream type supported by the sensor.",
+-				     NULL,
++				     0, G_MAXUINT, 0,
+ 				     G_PARAM_READABLE);
+ 	g_object_class_install_property (object_class, PROP_STREAM_TYPE, properties[PROP_STREAM_TYPE]);
+ 
+ 	properties[PROP_AVAILABLE] =
+-		g_param_spec_string (SSC_SENSOR_AVAILABLE,
++		g_param_spec_boolean (SSC_SENSOR_AVAILABLE,
+ 				     "Availability",
+ 				     "If the sensor is available for measurements.",
+-				     NULL,
++				     FALSE,
+ 				     G_PARAM_READABLE);
+ 	g_object_class_install_property (object_class, PROP_AVAILABLE, properties[PROP_AVAILABLE]);
+ 
+ 	properties[PROP_SAMPLE_RATE] =
+-		g_param_spec_string (SSC_SENSOR_SAMPLE_RATE,
++		g_param_spec_float (SSC_SENSOR_SAMPLE_RATE,
+ 				     "Sample rate",
+ 				     "The sample rate in Hz supported by the sensor.",
+-				     NULL,
++				     0, G_MAXFLOAT, 0,
+ 				     G_PARAM_READABLE);
+ 	g_object_class_install_property (object_class, PROP_SAMPLE_RATE, properties[PROP_SAMPLE_RATE]);
+ 
+@@ -941,3 +941,7 @@
+ 			SSC_SENSOR_DATA_TYPE, data_type,
+ 			NULL);
+ }
++
++#ifdef SSC_PHONE_PROPERTIES_TEST
++#include "../tests/phone-sensor-properties.inc"
++#endif
+--- /dev/null
++++ b/tests/phone-sensor-properties.inc
+@@ -0,0 +1,34 @@
++/* SPDX-License-Identifier: GPL-3.0-or-later */
++/* Compiled with the actual sensor implementation, without QMI or streams. */
++int main(int argc, char **argv)
++{
++    g_test_init(&argc, &argv, NULL);
++    SSCSensor *sensor = g_object_new(SSC_TYPE_SENSOR, NULL);
++    SSCSensorPrivate *priv = ssc_sensor_get_instance_private(sensor);
++    GObjectClass *klass = G_OBJECT_GET_CLASS(sensor);
++    g_assert_cmpuint(G_PARAM_SPEC_VALUE_TYPE(g_object_class_find_property(klass, SSC_SENSOR_AVAILABLE)), ==, G_TYPE_BOOLEAN);
++    g_assert_cmpuint(G_PARAM_SPEC_VALUE_TYPE(g_object_class_find_property(klass, SSC_SENSOR_STREAM_TYPE)), ==, G_TYPE_UINT);
++    g_assert_cmpuint(G_PARAM_SPEC_VALUE_TYPE(g_object_class_find_property(klass, SSC_SENSOR_SAMPLE_RATE)), ==, G_TYPE_FLOAT);
++    struct { guint32 before; gboolean available; guint32 after; } value = {0x12345678, TRUE, 0x87654321};
++    g_object_get(sensor, SSC_SENSOR_AVAILABLE, &value.available, NULL);
++    g_assert_false(value.available);
++    priv->available = TRUE;
++    priv->stream_type = 1;
++    priv->sample_rate = 25.0f;
++    guint stream_type = 99;
++    gfloat sample_rate = -1;
++    g_object_get(sensor, SSC_SENSOR_AVAILABLE, &value.available,
++                 SSC_SENSOR_STREAM_TYPE, &stream_type,
++                 SSC_SENSOR_SAMPLE_RATE, &sample_rate, NULL);
++    g_assert_true(value.available);
++    g_assert_cmpuint(value.before, ==, 0x12345678);
++    g_assert_cmpuint(value.after, ==, 0x87654321);
++    g_assert_cmpuint(stream_type, ==, 1);
++    g_assert_cmpfloat(sample_rate, ==, 25.0f);
++    priv->available = FALSE;
++    g_object_get(sensor, SSC_SENSOR_AVAILABLE, &value.available, NULL);
++    g_assert_false(value.available);
++    g_object_unref(sensor);
++    g_print("PHONE_SENSOR_TYPED_PROPERTIES_NO_QRTR_PASS\n");
++    return 0;
++}
+--- a/tests/meson.build
++++ b/tests/meson.build
+@@ -111,3 +111,9 @@
+   protocol: 'exitcode',
+   suite: 'delivery',
+ )
++
++test('phone-sensor-properties',
++  executable('phone-sensor-properties', sources,
++    c_args: ['-DSSC_PHONE_PROPERTIES_TEST'],
++    include_directories: includes, dependencies: deps),
++  suite: 'phone-probe', timeout: 10)

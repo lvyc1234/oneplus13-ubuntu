@@ -1,0 +1,32 @@
+[Unit]
+Description=OnePlus 13 SSC SensorProxy
+Requires=oneplus13-sensor-fileserver.service
+After=oneplus13-sensor-fileserver.service dbus.service
+ConditionKernelCommandLine=oneplus13.desktop=1
+ConditionPathExists=/run/oneplus13/ram-session
+
+[Service]
+Type=dbus
+BusName=net.hadess.SensorProxy
+Environment=LD_LIBRARY_PATH=/usr/lib/erhai/sensors/lib
+Environment=SSC_SUSPEND_MODE=nowakeup
+ExecStart=/usr/lib/erhai/sensors/libexec/iio-sensor-proxy
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=5s
+KillMode=control-group
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_QIPCRTR
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+PrivateDevices=yes
+MemoryMax=96M
+TasksMax=24

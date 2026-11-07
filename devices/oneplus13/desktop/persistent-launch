@@ -1,0 +1,43 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# Sourced by PID1. Only PID1 is allowed to invoke switch_root.
+persistent_main() {
+    if ! /bin/oneplus13-persistent-prepare > /run/evidence/persistent.txt 2>&1; then
+        echo 'Persistent root preparation failed'
+        cat /run/evidence/persistent.txt
+        case " $(cat /proc/cmdline) " in
+            *' oneplus13.persistent.debug=1 '*)
+                if ! grep -q ' /newroot ' /proc/mounts; then
+                    return 1
+                fi ;;
+        esac
+        sync
+        reboot -f
+        exit 1
+    fi
+    case " $(cat /proc/cmdline) " in
+        *' oneplus13.persistent.debug=1 '*)
+            setup_usb
+            for pid in "${dhcp_pid:-}" "${http_pid:-}" "${telnet_pid:-}"; do
+                [ -n "$pid" ] || continue
+                kill -TERM -"$pid" 2>/dev/null || true
+                wait "$pid" 2>/dev/null || true
+            done ;;
+    esac
+    echo ONEPLUS13_PERSISTENT_SWITCH_ROOT > /dev/kmsg
+    for dir in dev proc sys; do
+        if ! mount --move "/$dir" "/newroot/$dir"; then
+            sync
+            exit 1
+        fi
+    done
+    kill "$watchdog_pid" 2>/dev/null || true
+    wait "$watchdog_pid" 2>/dev/null || true
+    case " $(cat /newroot/proc/cmdline) " in
+        *' androidboot.mode=charger '*)
+            exec switch_root /newroot /sbin/init --unit=oneplus13-charger.target
+            exit 1 ;;
+    esac
+    exec switch_root /newroot /sbin/init
+    exit 1
+}

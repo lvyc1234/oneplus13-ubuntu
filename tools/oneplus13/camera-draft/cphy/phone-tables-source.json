@@ -1,0 +1,9 @@
+{
+  "repository": "OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8750",
+  "pin": "d50b305f7da9e14715a25120a4ac7b1a4b8b97c3",
+  "path": "vendor/qcom/opensource/camera-kernel/drivers/cam_sensor_module/cam_csiphy/include/cam_csiphy_2_3_0_hwreg_dodge_ultrawide.h",
+  "git_blob": "b552cfc3e147ed65a3011c95a93acf620a27fab7",
+  "sha256": "350e2c9188c5db163cdc7fbb7a893cbd4089175a1adfa8aa6f5881c7c454c501",
+  "license": "GPL-2.0-only",
+  "data_only_no_runtime_driver": true
+}

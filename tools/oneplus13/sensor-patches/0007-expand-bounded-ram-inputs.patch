@@ -1,0 +1,191 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH] phone-rpc: expand bounded reverse inputs
+
+Run74 showed that sensor registry servicing exceeded the listener's256-byte
+stack request buffer and later requested two additional exact volatile paths.
+Use a separately allocated64KiB request buffer for adsp_listener_next2. A
+returned length above the supplied capacity remains a hard EMSGSIZE failure.
+
+Add these exact default-off RAM-backed paths:
+
+  /mnt/vendor/persist/sensors/registry/fstempfile
+  /mnt/vendor/persist/sensors/registry/parsed_file_list.csv
+
+They use the existing bounded storage semantics, handle namespace and cleanup.
+No neighboring path, persistent write, executable payload or sensor stream is
+admitted. The listener refusal test now sends a300-byte request to exercise the
+former cutoff instead of merely checking the constant.
+
+--- a/hexagonrpcd/listener.c
++++ b/hexagonrpcd/listener.c
+@@ -19,16 +19,20 @@
+  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+  */
+ 
++#include <errno.h>
+ #include <inttypes.h>
+ #include <libhexagonrpc/error.h>
+ #include <libhexagonrpc/hexagonrpc.h>
+ #include <stddef.h>
+ #include <stdint.h>
+ #include <stdio.h>
++#include <stdlib.h>
+ 
+ #include "interface/adsp_listener.h"
+ #include "iobuffer.h"
+ #include "listener.h"
++
++#define FASTRPC_MAX_INPUT_BYTES (64u * 1024u)
+ 
+ static int count_sizes_in_type4(const struct hrpc_inner_type_def_interp4 *type,
+ 				const struct fastrpc_io_buffer **curr_inbuf,
+@@ -422,10 +426,10 @@
+ 				  uint32_t *handle,
+ 				  uint32_t *sc,
+ 				  const struct fastrpc_io_buffer *returned,
+-				  struct fastrpc_io_buffer **decoded)
++				  struct fastrpc_io_buffer **decoded,
++				  uint32_t inbufs_size, char *inbufs)
+ {
+ 	struct fastrpc_decoder_context *ctx;
+-	char inbufs[256];
+ 	char *outbufs = NULL;
+ 	uint32_t inbufs_len;
+ 	uint32_t outbufs_len;
+@@ -452,7 +456,7 @@
+ 				  *rctx, result,
+ 				  outbufs_len, outbufs,
+ 				  rctx, handle, sc,
+-				  &inbufs_len, 256, inbufs);
++				  &inbufs_len, inbufs_size, inbufs);
+ 	if (ret) {
+ 		if (ret == -1)
+ 			perror("Could not fetch next FastRPC message");
+@@ -462,9 +466,9 @@
+ 		goto err_free_outbufs;
+ 	}
+ 
+-	if (inbufs_len > 256) {
+-		fprintf(stderr, "Large (>256B) input buffers aren't implemented\n");
+-		ret = -1;
++	if (inbufs_len > inbufs_size) {
++		fprintf(stderr, "Input buffers exceed the 64KiB listener limit\n");
++		ret = -EMSGSIZE;
+ 		goto err_free_outbufs;
+ 	}
+ 
+@@ -584,6 +588,7 @@
+ {
+ 	struct fastrpc_io_buffer *decoded = NULL,
+ 				 *returned = NULL;
++	char *inbufs;
+ 	uint32_t result = 0xffffffff;
+ 	uint32_t handle;
+ 	uint32_t rctx = 0;
+@@ -596,11 +601,15 @@
+ 		fprintf(stderr, "Could not initialize the listener: %u\n", ret);
+ 		return ret;
+ 	}
++	inbufs = malloc(FASTRPC_MAX_INPUT_BYTES);
++	if (inbufs == NULL)
++		return -ENOMEM;
+ 
+ 	while (!ret) {
+ 		ret = return_for_next_invoke(fd,
+ 					     result, &rctx, &handle, &sc,
+-					     returned, &decoded);
++					     returned, &decoded,
++					     FASTRPC_MAX_INPUT_BYTES, inbufs);
+ 		if (ret)
+ 			break;
+ 
+@@ -630,5 +639,6 @@
+ 		n_outbufs = REMOTE_SCALARS_OUTBUFS(sc);
+ 	}
+ 
++	free(inbufs);
+ 	return ret;
+ }
+--- a/tests/test_listener_refusal.c
++++ b/tests/test_listener_refusal.c
+@@ -59,6 +59,7 @@
+ 	static const char *const strings[] = {
+ 		"ADSP_LIBRARY_PATH", ";", "absent.so", "r",
+ 	};
++	char large_input[300];
+ 	uint32_t primary[5];
+ 	const void *bufs[5];
+ 	uint32_t lens[5];
+@@ -74,6 +75,13 @@
+ 	for (i = 0; i < 4; i++) {
+ 		bufs[i + 1] = strings[i];
+ 		lens[i + 1] = strlen(strings[i]) + 1;
++	}
++	if (method == 37) {
++		memset(large_input, 'L', sizeof(large_input));
++		large_input[sizeof(large_input) - 1] = 0;
++		primary[4] = htole32(sizeof(large_input));
++		bufs[4] = large_input;
++		lens[4] = sizeof(large_input);
+ 	}
+ 
+ 	for (i = 0; i < 5; i++) {
+--- a/hexagonrpcd/phone_ramfs.h
++++ b/hexagonrpcd/phone_ramfs.h
+@@ -7,7 +7,7 @@
+ #include <stdint.h>
+ #include <stdlib.h>
+ #include <string.h>
+-#define PR_FILES 2u
++#define PR_FILES 4u
+ #define PR_FILE_CAP (1024u * 1024u)
+ #define PR_IO_CAP (64u * 1024u)
+ #define PR_HANDLES 16u
+@@ -23,7 +23,9 @@
+ };
+ static const char *const pr_names[PR_FILES]={
+     "/mnt/vendor/persist/sensors/registry/registry/DIR",
+-    "/mnt/vendor/persist/sensors/cam_registry_dump.txt"};
++    "/mnt/vendor/persist/sensors/cam_registry_dump.txt",
++    "/mnt/vendor/persist/sensors/registry/fstempfile",
++    "/mnt/vendor/persist/sensors/registry/parsed_file_list.csv"};
+ static inline int pr_index(const char *name)
+ {
+     unsigned int i;
+--- a/tests/test_phone_ramfs.c
++++ b/tests/test_phone_ramfs.c
+@@ -11,6 +11,7 @@
+     unsigned int i;unsigned char readbuf[8]={0};
+     unsigned char *large=malloc(PR_IO_CAP);CHECK(large);memset(large,'Q',PR_IO_CAP);
+     CHECK(pr_index(pr_names[0])==0 && pr_index(pr_names[1])==1);
++    CHECK(pr_index(pr_names[2])==2 && pr_index(pr_names[3])==3);
+     CHECK(pr_index("/mnt/vendor/persist/sensors/registry/registry/DIR/../DIR")==-1);
+     CHECK(pr_index("/mnt/vendor/persist/sensors/cam_registry_dump.txt.extra")==-1);
+     CHECK(pr_open(&fs,0,'w',&w)==EINVAL);
+--- a/tests/test_apps_std_ram.c
++++ b/tests/test_apps_std_ram.c
+@@ -189,6 +189,8 @@
+     int dispatch_ret;
+     const char *path0=pr_names[0];
+     const char *path1=pr_names[1];
++    const char *path2=pr_names[2];
++    const char *path3=pr_names[3];
+     static const char embedded[] = "/mnt/vendor/persist/sensors/cam_registry_dump.txt\0X";
+     unsigned char *large;
+     if(argc!=2) return 2;
+@@ -241,6 +243,15 @@
+        read!=6 || eof || memcmp(buf,"abcdef",6)) fail("append visible across handles");
+     if(simple_word(FCLOSE_SC,fd,0,1,&dispatch_ret) || dispatch_ret) fail("close final reader");
+ 
++    if(open_ram(path2,"w","ADSP_LIBRARY_PATH",";",strlen(path2)+1,&fd,&dispatch_ret)
++       || dispatch_ret || write_ram(fd,"tmp",3,&written,&eof,&dispatch_ret) ||
++       dispatch_ret || written!=3) fail("fstempfile RAM write");
++    if(simple_word(FCLOSE_SC,fd,0,1,&dispatch_ret) || dispatch_ret) fail("close fstempfile");
++    if(open_ram(path3,"w","ADSP_LIBRARY_PATH",";",strlen(path3)+1,&fd,&dispatch_ret)
++       || dispatch_ret || write_ram(fd,"csv",3,&written,&eof,&dispatch_ret) ||
++       dispatch_ret || written!=3) fail("parsed file list RAM write");
++    if(simple_word(FCLOSE_SC,fd,0,1,&dispatch_ret) || dispatch_ret) fail("close parsed file list");
++
+     if(open_ram(path1,"r+","ADSP_LIBRARY_PATH",";",strlen(path1)+1,&fd,&dispatch_ret)==0 ||
+        dispatch_ret || fd!=UINT32_MAX) fail("update mode not refused");
+     if(open_ram("/mnt/vendor/persist/sensors/cam_registry_dump.txt/","w",

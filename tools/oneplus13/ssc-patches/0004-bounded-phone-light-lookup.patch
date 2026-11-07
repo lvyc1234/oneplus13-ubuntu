@@ -1,0 +1,126 @@
+From 5f8e0f653cb7b7e463efafce92a34b857f10bf4a Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Wed, 28 Oct 2026 01:04:00 +0800
+Subject: [PATCH] libssc: retry light discovery with non-default UIDs
+
+Phone-only diagnostic hypothesis: a non-default ambient_light lookup may
+expose another candidate after an empty default lookup. Existing hardware
+logs establish only available=false, not the number of returned UIDs or
+the cause. Do not treat the Android fused sensor name as proof of its
+SSC discovery flags or of a missing Linux fusion algorithm.
+
+On the OnePlus 13 Android sensor service, the active light type is
+"OPLUS Fusion Light Sensor Next Gen"; the tcs3720 high-PWM light sensor
+and RGB sensor are separate vendor sensors. The captured SSC registry
+contains default_sensors.ambient_light, so the first default-only query is
+still required. Only when that query returns no UID, retry the same
+ambient_light lookup once with only_default_values=false.
+
+The non-default response can contain multiple UIDs, including unavailable
+entries. Query attributes for each UID in order and stop at the first
+available sensor. Keep the fallback limited to ambient_light and to one
+UID-list request. Every other sensor type retains the existing
+default-only lookup and no sampling or stream behavior changes.
+
+--- a/src/libssc-sensor.c
++++ b/src/libssc-sensor.c
+@@ -61,6 +61,11 @@
+ 	gboolean attr_populated;
+ 	gboolean service_available;
+ 	guint service_retries;
++	guint64 *light_uid_high;
++	guint64 *light_uid_low;
++	guint light_uid_count;
++	guint light_uid_index;
++	gboolean light_discover_all;
+ } SSCSensorPrivate;
+ 
+ static void async_initable_iface_init (GAsyncInitableIface *iface);
+@@ -338,8 +343,24 @@
+ 
+ 		/* Only default sensor for data type is reported */
+ 		if (suid_msg != NULL && suid_msg->n_uid > 0) {
++			if (priv->light_discover_all) {
++				g_free (priv->light_uid_high);
++				g_free (priv->light_uid_low);
++				priv->light_uid_count = suid_msg->n_uid;
++				priv->light_uid_index = 0;
++				priv->light_uid_high = g_new (guint64, priv->light_uid_count);
++				priv->light_uid_low = g_new (guint64, priv->light_uid_count);
++				for (guint i = 0; i < priv->light_uid_count; i++) {
++					priv->light_uid_high[i] = suid_msg->uid[i]->high;
++					priv->light_uid_low[i] = suid_msg->uid[i]->low;
++				}
++			}
+ 			priv->uid_high = suid_msg->uid[0]->high;
+ 			priv->uid_low = suid_msg->uid[0]->low;
++			if (priv->light_discover_all) {
++				priv->uid_high = priv->light_uid_high[0];
++				priv->uid_low = priv->light_uid_low[0];
++			}
+ 
+ 			g_debug ("Discovered '%s' sensor (%" G_GUINT64_FORMAT " %" G_GUINT64_FORMAT ")", priv->data_type, priv->uid_high, priv->uid_low);
+ 			ssc_suid_response__free_unpacked (suid_msg, NULL);
+@@ -350,6 +371,16 @@
+ 			return;
+ 		/* No sensor available for specified data type, complete task */
+ 		} else {
++			if (g_strcmp0 (priv->data_type, "ambient_light") == 0 &&
++			    !priv->light_discover_all) {
++				priv->light_discover_all = TRUE;
++				g_debug ("No default 'ambient_light' sensor available; "
++					 "retrying with non-default UIDs");
++				ssc_suid_response__free_unpacked (suid_msg, NULL);
++				discover (ctx->sensor, ctx->task);
++				return;
++			}
++
+ 			g_debug ("No '%s' sensor available", priv->data_type);
+ 			ssc_suid_response__free_unpacked (suid_msg, NULL);
+ 
+@@ -442,6 +473,23 @@
+ 
+ 		/* Sensor initialized, complete task and stop listening */
+ 		if (ctx->task) {
++			if (priv->light_discover_all && !priv->available &&
++			    priv->light_uid_index + 1 < priv->light_uid_count) {
++				priv->light_uid_index++;
++				priv->uid_high = priv->light_uid_high[priv->light_uid_index];
++				priv->uid_low = priv->light_uid_low[priv->light_uid_index];
++				g_clear_pointer (&priv->name, g_free);
++				g_clear_pointer (&priv->vendor, g_free);
++				priv->available = FALSE;
++				priv->sample_rate = 0;
++				priv->stream_type = 0;
++				memset (priv->mount_matrix, 0, sizeof (priv->mount_matrix));
++				g_debug ("Light UID %u/%u is unavailable; checking the next UID",
++					 priv->light_uid_index + 1, priv->light_uid_count);
++				ssc_attr_response__free_unpacked (attr_msg, NULL);
++				attribute (ctx->sensor, ctx->task);
++				return;
++			}
+ 			g_signal_handler_disconnect (self, priv->report_id);
+ 			priv->report_id = 0;
+ 			g_task_return_boolean (ctx->task, attributes_populated);
+@@ -579,7 +627,7 @@
+ 	msg.has_enable_updates = true;
+ 	msg.enable_updates = false;
+ 	msg.has_only_default_values = true;
+-	msg.only_default_values = true;
++	msg.only_default_values = !priv->light_discover_all;
+ 
+ 	buf = g_array_new (FALSE, FALSE, 1);
+ 	g_array_set_size (buf, ssc_suid_request__get_packed_size (&msg));
+@@ -797,6 +845,9 @@
+ 	if (priv->data_type)
+ 		g_free (priv->data_type);
+ 
++	g_free (priv->light_uid_high);
++	g_free (priv->light_uid_low);
++
+ 	g_clear_object (&priv->client);
+ }
+ 
+
+-- 
+2.39.5

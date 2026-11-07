@@ -1,0 +1,134 @@
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_core_perf.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_core_perf.c
+@@ -16,6 +16,7 @@
+ #include "dpu_kms.h"
+ #include "dpu_trace.h"
+ #include "dpu_crtc.h"
++#include "dpu_plane.h"
+ #include "dpu_core_perf.h"
+ 
+ /**
+@@ -180,6 +181,45 @@
+ 		return -EOVERFLOW;
+ 	*output = div_u64_rem(product, 102, &remainder);
+ 	*output += remainder != 0;
++	return 0;
++}
++
++static int dpu_aa569_spr_calc(struct drm_crtc_state *state,
++			    const struct dpu_perf_cfg *cfg,
++			    struct dpu_core_perf_params *perf)
++{
++	const struct drm_display_mode *mode = &state->adjusted_mode;
++	struct dpu_core_perf_params next = { .max_per_pipe_ib = cfg->min_dram_ib };
++	struct drm_plane *plane;
++	struct drm_plane_state *pstate;
++	u64 bw, clock, product;
++	u32 remainder;
++	int ret;
++
++	next.core_clk_rate = (u64)mode->vtotal * mode->hdisplay * drm_mode_vrefresh(mode);
++	drm_atomic_crtc_state_for_each_plane_state(plane, pstate, state) {
++		if (!pstate->visible)
++			continue;
++		ret = dpu_plane_calc_aa569_perf(pstate, mode, &bw, &clock);
++		if (ret)
++			return ret;
++		if (check_add_overflow(next.bw_ctl, bw, &next.bw_ctl))
++			return -EOVERFLOW;
++		next.core_clk_rate = max(next.core_clk_rate, clock);
++	}
++	if (cfg->bw_inefficiency_factor) {
++		if (check_mul_overflow(next.bw_ctl, cfg->bw_inefficiency_factor, &product))
++			return -EOVERFLOW;
++		next.bw_ctl = div_u64_rem(product, 100, &remainder);
++		next.bw_ctl += remainder != 0;
++	}
++	if (cfg->clk_inefficiency_factor) {
++		if (check_mul_overflow(next.core_clk_rate, cfg->clk_inefficiency_factor, &product))
++			return -EOVERFLOW;
++		next.core_clk_rate = div_u64_rem(product, 100, &remainder);
++		next.core_clk_rate += remainder != 0;
++	}
++	*perf = next;
+ 	return 0;
+ }
+ 
+@@ -243,10 +283,12 @@
+ 	dpu_cstate = to_dpu_crtc_state(state);
+ 
+ 	/* obtain new values */
+-	_dpu_core_perf_calc_crtc(&kms->perf, crtc, state, &dpu_cstate->new_perf);
+ 	if (kms->aa569_spr && state->enable) {
+ 		if (kms->perf.perf_tune.mode != DPU_PERF_MODE_NORMAL)
+ 			return -EINVAL;
++		ret = dpu_aa569_spr_calc(state, kms->perf.perf_cfg, &dpu_cstate->new_perf);
++		if (ret)
++			return ret;
+ 		ret = dpu_aa569_spr_budget(&dpu_cstate->new_perf,
+ 					 kms->perf.max_opp_clk_rate);
+ 		if (ret)
+@@ -255,6 +297,8 @@
+ 		    DIV_ROUND_UP_ULL(dpu_cstate->new_perf.bw_ctl, 1000) >
+ 		    kms->perf.perf_cfg->max_bw_high)
+ 			return -E2BIG;
++	} else {
++		_dpu_core_perf_calc_crtc(&kms->perf, crtc, state, &dpu_cstate->new_perf);
+ 	}
+ 
+ 	dpu_core_perf_aggregate(crtc->dev, dpu_crtc_get_client_type(crtc), &perf);
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_plane.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_plane.c
+@@ -182,6 +182,42 @@
+ 	}
+ 
+ 	return plane_clk;
++}
++
++/* Called only by the isolated AA569 atomic budget, after SSPP assignment.
++ * Recompute from the NEW pipe geometry; atomic_update's cached plane votes
++ * still describe the previous frame during the check of a fresh enable.
++ */
++int dpu_plane_calc_aa569_perf(struct drm_plane_state *state,
++			    const struct drm_display_mode *mode, u64 *bw, u64 *clock)
++{
++	struct dpu_plane *pdpu = to_dpu_plane(state->plane);
++	struct dpu_plane_state *pstate = to_dpu_plane_state(state);
++	const struct msm_format *fmt;
++	u64 total = 0, maximum = 0;
++	int i;
++
++	if (!state->fb || !state->visible)
++		return -EINVAL;
++	fmt = msm_framebuffer_format(state->fb);
++	for (i = 0; i < PIPES_PER_PLANE; i++) {
++		struct dpu_sw_pipe_cfg *cfg = &pstate->pipe_cfg[i];
++
++		if (!drm_rect_width(&cfg->src_rect))
++			continue;
++		if (drm_rect_width(&cfg->src_rect) < 0 ||
++		    drm_rect_height(&cfg->src_rect) <= 0 ||
++		    drm_rect_width(&cfg->dst_rect) <= 0 ||
++		    drm_rect_height(&cfg->dst_rect) <= 0)
++			return -EINVAL;
++		total += _dpu_plane_calc_bw(pdpu->catalog, fmt, mode, cfg);
++		maximum = max(maximum, _dpu_plane_calc_clk(mode, cfg));
++	}
++	if (!total || !maximum)
++		return -EINVAL;
++	*bw = total;
++	*clock = maximum;
++	return 0;
+ }
+ 
+ /**
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_plane.h
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_plane.h
+@@ -75,4 +75,7 @@
+ 			       struct drm_plane_state **states,
+ 			       unsigned int num_planes);
+ 
++int dpu_plane_calc_aa569_perf(struct drm_plane_state *state,
++			    const struct drm_display_mode *mode, u64 *bw, u64 *clock);
++
+ #endif /* _DPU_PLANE_H_ */

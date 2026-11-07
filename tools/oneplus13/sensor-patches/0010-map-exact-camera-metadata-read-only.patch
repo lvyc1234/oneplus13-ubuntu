@@ -1,0 +1,173 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH] phone-rpc: map exact camera metadata input read-only
+
+Run77 requested one camera metadata input outside the existing sensors tree.
+Expose only that fixed virtual filename from an optional staged camera file.
+Missing data stays ENOENT. Neither the camera directory nor host persist tree is
+passed through, and the file is outside the volatile writable namespace.
+
+The private input is deliberately absent from this source patch and artifacts.
+Tests use synthetic binary bytes including NUL, verify missing/read/EOF/seek,
+neighbor and traversal refusal, and exercise read/write rejection through the
+real apps_std wire dispatcher. No camera or sensor client is started.
+
+--- a/hexagonrpcd/rpcd_builder.c
++++ b/hexagonrpcd/rpcd_builder.c
+@@ -36,6 +36,7 @@
+ #define ODM_SENSORS_CONFIG	"/sensors/odm-config/"
+ #define SYSFS_SOCINFO		"/socinfo/"
+ #define PHONE_PCB_VERSION	"/board/pcbVersion"
++#define PHONE_CAMERA_INFO	"/camera/Rear_third_camera_info.bin"
+ 
+ static struct hexagonfs_dirent *hfs_mkdir(const char *name, size_t n_ents, ...)
+ {
+@@ -117,7 +118,7 @@
+ {
+ 	char *acdbdata, *dsp_libs, *sns_cfg, *sns_reg, *sns_reg_version,
+ 	     *cam_registry, *sns_reg_config, *odm_sns_cfg, *socinfo,
+-	     *pcb_version;
++	     *pcb_version, *camera_info;
+ 	size_t n_prefix;
+ 	struct hexagonfs_dirent *persist_dir, *vendor_dir;
+ 
+@@ -132,6 +133,9 @@
+ 	odm_sns_cfg = malloc(n_prefix + strlen(ODM_SENSORS_CONFIG) + 1);
+ 	socinfo = malloc(n_prefix + strlen(SYSFS_SOCINFO) + 1);
+ 	pcb_version = malloc(n_prefix + strlen(PHONE_PCB_VERSION) + 1);
++	camera_info = malloc(n_prefix + strlen(PHONE_CAMERA_INFO) + 1);
++	if (camera_info == NULL)
++		return NULL;
+ 
+ 	dsp_libs = malloc(n_prefix + strlen(DSP_LIBS) + strlen(dsp) + 1);
+ 
+@@ -178,6 +182,10 @@
+ 	if (pcb_version != NULL) {
+ 		strcpy(pcb_version, prefix);
+ 		strcat(pcb_version, PHONE_PCB_VERSION);
++	}
++	if (camera_info != NULL) {
++		strcpy(camera_info, prefix);
++		strcat(camera_info, PHONE_CAMERA_INFO);
+ 	}
+ 
+ 	if (dsp_libs != NULL) {
+@@ -190,7 +198,10 @@
+ 	 * Some platforms need this in / and some need it in /mnt/vendor. Form
+ 	 * a hard link between both locations.
+ 	 */
+-	persist_dir = hfs_mkdir("persist", 1,
++	persist_dir = hfs_mkdir("persist", 2,
++				hfs_mkdir("camera", 1,
++					hfs_map("Rear_third_camera_info.bin", camera_info)
++				),
+ 				hfs_mkdir("sensors", 2,
+ 					hfs_mkdir("registry", 2,
+ 						hfs_map("registry", sns_reg),
+--- a/tests/meson.build
++++ b/tests/meson.build
+@@ -163,3 +163,16 @@
+   include_directories : include,
+ )
+ test('phone-ramfs-storage', test_phone_ramfs)
++
++test_phone_camera_info = executable('test_phone_camera_info',
++  'test_phone_camera_info.c',
++  '../hexagonrpcd/rpcd_builder.c',
++  '../hexagonrpcd/hexagonfs.c',
++  '../hexagonrpcd/hexagonfs_mapped.c',
++  '../hexagonrpcd/hexagonfs_plat_subtype_name.c',
++  '../hexagonrpcd/hexagonfs_virt_dir.c',
++  c_args : cflags,
++  include_directories : include,
++)
++test('phone-camera-info', test_phone_camera_info,
++  args : [meson.current_build_dir()])
+--- a/tests/test_apps_std_ram.c
++++ b/tests/test_apps_std_ram.c
+@@ -194,6 +194,12 @@
+         fail("path too long");
+     fd=open(path,O_WRONLY|O_CREAT|O_TRUNC,0600);
+     if(fd<0 || write(fd,"source-data",11)!=11 || close(fd)) fail("write source DIR");
++    if(snprintf(sensors,sizeof(sensors),"%s/camera",root)>=(int)sizeof(sensors) ||
++       (mkdir(sensors,0700) && errno!=EEXIST)) fail("mkdir camera fixture");
++    if(snprintf(path,sizeof(path),"%s/Rear_third_camera_info.bin",sensors)>=(int)sizeof(path))
++        fail("camera path too long");
++    fd=open(path,O_WRONLY|O_CREAT|O_TRUNC,0600);
++    if(fd<0 || write(fd,"C\0D",3)!=3 || close(fd)) fail("write synthetic camera fixture");
+ }
+ 
+ int main(int argc,char **argv)
+@@ -212,6 +218,17 @@
+     make_source(argv[1]);
+     apps_std=fastrpc_apps_std_init_with_ramfs(construct_root_dir(argv[1],""));
+     if(!apps_std) fail("could not initialize RAM-enabled apps_std");
++
++    {
++        const char *camera="/mnt/vendor/persist/camera/Rear_third_camera_info.bin";
++        if(open_ram(camera,"r","ADSP_LIBRARY_PATH",";",strlen(camera)+1,&fd,&dispatch_ret)
++           || dispatch_ret || pr_namespace(fd) ||
++           read_ram(fd,3,buf,&read,&eof,&dispatch_ret) || dispatch_ret || read!=3 ||
++           memcmp(buf,"C\0D",3)) fail("camera binary wire read");
++        if(simple_word(FCLOSE_SC,fd,0,1,&dispatch_ret) || dispatch_ret) fail("close camera");
++        if(open_ram(camera,"w","ADSP_LIBRARY_PATH",";",strlen(camera)+1,&fd,&dispatch_ret)
++           !=AEE_EUNSUPPORTED || dispatch_ret) fail("camera input admitted writable handle");
++    }
+ 
+     written=open_ram(path0,"r","ADSP_LIBRARY_PATH",";",strlen(path0)+1,&fd,&dispatch_ret);
+     if(written || dispatch_ret || !pr_namespace(fd)) {
+--- /dev/null
++++ b/tests/test_phone_camera_info.c
+@@ -0,0 +1,53 @@
++/* SPDX-License-Identifier: GPL-3.0-or-later */
++/* Synthetic binary only. No camera activation, calibration or device access. */
++#include <errno.h>
++#include <fcntl.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/stat.h>
++#include <unistd.h>
++#include "../hexagonrpcd/hexagonfs.h"
++#include "../hexagonrpcd/rpcd_builder.h"
++#define CHECK(x) do { if(!(x)) { fprintf(stderr,"phone-camera:%d\n",__LINE__);return 1; } } while(0)
++int main(int argc,char **argv)
++{
++    struct hexagonfs_fd *fds[HEXAGONFS_MAX_FD]={0};
++    struct hexagonfs_dirent *root;
++    struct stat stats;
++    static const unsigned char expected[]={0x00,0x53,0x59,0x4e,0x54,0xff,0x0a};
++    unsigned char actual[32];
++    char temp[4096],directory[4096],file[4096];
++    const char *name="/mnt/vendor/persist/camera/Rear_third_camera_info.bin";
++    int rootfd,fd,hostfd,n;
++    CHECK(argc==2);
++    n=snprintf(temp,sizeof(temp),"%s/phone-camera-XXXXXX",argv[1]);
++    CHECK(n>0 && (size_t)n<sizeof(temp) && mkdtemp(temp));
++    root=construct_root_dir(temp,"adsp");CHECK(root);
++    rootfd=hexagonfs_open_root(fds,root);CHECK(rootfd>=0);
++    CHECK(hexagonfs_openat(fds,rootfd,rootfd,name)==-ENOENT);
++    n=snprintf(directory,sizeof(directory),"%s/camera",temp);
++    CHECK(n>0 && (size_t)n<sizeof(directory) && mkdir(directory,0700)==0);
++    n=snprintf(file,sizeof(file),"%s/Rear_third_camera_info.bin",directory);
++    CHECK(n>0 && (size_t)n<sizeof(file));
++    hostfd=open(file,O_WRONLY|O_CREAT|O_EXCL,0600);CHECK(hostfd>=0);
++    CHECK(write(hostfd,expected,sizeof(expected))==(ssize_t)sizeof(expected));
++    CHECK(close(hostfd)==0);
++    fd=hexagonfs_openat(fds,rootfd,rootfd,name);CHECK(fd>=0);
++    CHECK(hexagonfs_fstat(fds,fd,&stats)==0 && stats.st_size==(off_t)sizeof(expected));
++    CHECK((stats.st_mode&0222)==0 && S_ISREG(stats.st_mode));
++    CHECK(hexagonfs_read(fds,fd,sizeof(actual),actual)==(ssize_t)sizeof(expected));
++    CHECK(memcmp(actual,expected,sizeof(expected))==0);
++    CHECK(hexagonfs_read(fds,fd,sizeof(actual),actual)==0);
++    CHECK(hexagonfs_lseek(fds,fd,0,SEEK_SET)==0);
++    CHECK(hexagonfs_close(fds,fd)==0);
++    fd=hexagonfs_openat(fds,rootfd,rootfd,"/persist/camera/Rear_third_camera_info.bin");
++    CHECK(fd>=0 && hexagonfs_close(fds,fd)==0);
++    CHECK(hexagonfs_openat(fds,rootfd,rootfd,"/mnt/vendor/persist/camera/Rear_third_camera_info.bin.extra")==-ENOENT);
++    CHECK(hexagonfs_openat(fds,rootfd,rootfd,"/mnt/vendor/persist/camera/another-camera.bin")==-ENOENT);
++    CHECK(hexagonfs_openat(fds,rootfd,rootfd,"/mnt/vendor/persist/camera/../../etc/passwd")==-ENOENT);
++    CHECK(stat(file,&stats)==0 && (stats.st_mode&0777)==0600 && stats.st_size==(off_t)sizeof(expected));
++    CHECK(hexagonfs_close(fds,rootfd)==0);
++    puts("PHONE_CAMERA_INFO_EXACT_BINARY_READ_ONLY_MAPPING_PASS");
++    return 0;
++}

@@ -1,0 +1,338 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH] phone: separate bounded three-vector sample diagnostic
+
+Preserve the one-way metadata-only process. A separately linked executable
+enrolls at most three discovered UIDs, enables each once at5Hz, collects3s
+and disables each once. The original send path enforces the finite rate,
+unknown-field, UID, message and repeat constraints before QMI. No service
+integration, IIO publisher, physical axis or calibration claim is added.
+
+--- a/src/libssc-phone-probe.c
++++ b/src/libssc-phone-probe.c
+@@ -35,7 +35,12 @@
+     }
+     return accepted;
+ }
++#include "phone-sample-policy.inc"
+ gboolean ssc_phone_request_allowed(guint64 high,guint64 low,guint32 id,const GArray *payload)
+ {
++    if(sample_mode) return phone_sample_request_allowed(high,low,id,payload);
+     return !ssc_phone_metadata_only_locked() || ssc_phone_metadata_policy(high,low,id,payload);
+ }
++
++gboolean ssc_phone_sample_lock(void) { return phone_sample_lock(); }
++gboolean ssc_phone_sample_enroll(guint s,guint64 h,guint64 l) { return phone_sample_enroll(s,h,l); }
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -121,3 +121,12 @@
+     )
+   endif
+ endif
++
++phone_samples = executable('phone-ssc-sample-probe',
++ 'phone-ssc-sample-probe.c', sources, include_directories: includes,
++ dependencies: deps, link_args: ['-lm'], install: false)
++
++test('phone-sample-tests', executable('phone-sample-tests',
++ 'phone-sample-tests.c', sources, include_directories: includes,
++ dependencies: deps, link_args: ['-lm'], install: false),
++ suite: 'phone-probe', timeout: 10)
+--- /dev/null
++++ b/src/phone-sample-policy.inc
+@@ -0,0 +1,51 @@
++/* SPDX-License-Identifier: GPL-3.0-or-later */
++/* Explicit one-process diagnostic only. Never relax the metadata executable. */
++#include <math.h>
++typedef struct { guint64 high,low; gboolean enrolled,enabled,disabled; } PhoneSampleUid;
++static PhoneSampleUid sample_uids[3];
++static gboolean sample_mode;
++static gint64 sample_deadline;
++static GMutex sample_mutex;
++static gboolean phone_sample_lock(void)
++{
++    if(ssc_phone_metadata_only_locked()) return FALSE;
++    ssc_phone_lock_metadata_only();sample_mode=TRUE;
++    sample_deadline=g_get_monotonic_time()+12*G_USEC_PER_SEC;
++    return TRUE;
++}
++static gboolean phone_sample_enroll(guint slot,guint64 high,guint64 low)
++{
++    gboolean okay=FALSE;
++    g_mutex_lock(&sample_mutex);
++    if(!sample_mode || slot>=3 || sample_uids[slot].enrolled ||
++       (!high && !low) || (high==SSC_SENSOR_UID_SUID_HIGH && low==SSC_SENSOR_UID_SUID_LOW) ||
++       g_get_monotonic_time()>sample_deadline) goto out;
++    for(guint i=0;i<3;i++) if(sample_uids[i].enrolled &&
++        sample_uids[i].high==high && sample_uids[i].low==low) goto out;
++    sample_uids[slot]=(PhoneSampleUid){.high=high,.low=low,.enrolled=TRUE};okay=TRUE;
++out:g_mutex_unlock(&sample_mutex);return okay;
++}
++static gboolean phone_sample_request_allowed(guint64 high,guint64 low,guint32 id,const GArray *payload)
++{
++    gboolean okay=FALSE;
++    /* Existing metadata policy remains byte-for-byte applicable. */
++    if(ssc_phone_metadata_policy(high,low,id,payload)) return TRUE;
++    g_mutex_lock(&sample_mutex);
++    for(guint i=0;i<3;i++) {
++        PhoneSampleUid *uid=&sample_uids[i];
++        if(!uid->enrolled || uid->high!=high || uid->low!=low) continue;
++        if(id==SSC_MSG_REQUEST_ENABLE_REPORT_CONTINUOUS && !uid->enabled && !uid->disabled &&
++           g_get_monotonic_time()<=sample_deadline && payload &&
++           g_array_get_element_size((GArray*)payload)==1 && payload->len>0 && payload->len<=32) {
++            SscEnableConfigRequest *msg=ssc_enable_config_request__unpack(NULL,payload->len,(guint8*)payload->data);
++            if(msg && msg->base.n_unknown_fields==0 && isfinite(msg->sample_rate) && msg->sample_rate==5.0f) {
++                uid->enabled=TRUE;okay=TRUE;
++            }
++            if(msg) ssc_enable_config_request__free_unpacked(msg,NULL);
++        } else if(id==SSC_MSG_REQUEST_DISABLE_REPORT && uid->enabled && !uid->disabled && !payload) {
++            uid->disabled=TRUE;okay=TRUE;
++        }
++        break;
++    }
++    g_mutex_unlock(&sample_mutex);return okay;
++}
+--- /dev/null
++++ b/src/phone-ssc-sample-probe.c
+@@ -0,0 +1,155 @@
++/* SPDX-License-Identifier: GPL-3.0-or-later */
++/* Bounded 5Hz three-vector diagnostic. No device service or IIO publisher. */
++#include <stdio.h>
++#include <math.h>
++#include "libssc-client-private.h"
++#include "libssc-phone-probe-private.h"
++#include "ssc-sensor-accelerometer.pb-c.h"
++/* Linked directly with private source objects, never public library exports. */
++gboolean ssc_phone_sample_lock(void);
++gboolean ssc_phone_sample_enroll(guint slot,guint64 high,guint64 low);
++typedef struct {
++ const char *type;SSCSensor *sensor;SSCClient *client;
++ guint64 high,low;gulong handler;
++ gboolean available,enable_sent,enabled,disable_sent,disabled;
++ guint samples,invalid;double norm_min,norm_max;gfloat matrix[3][3];
++} Probe;
++static Probe probes[]={{.type="accel"},{.type="gyro"},{.type="mag"}};
++static GMainLoop *loop;static GCancellable *cancel;
++static guint discovery_done;static gboolean stopping,failed;
++static guint sample_timer;
++static void stop_samples(void);
++static gboolean matrix_valid(const gfloat matrix[3][3])
++{
++ for(guint i=0;i<3;i++) {
++  guint row=0,col=0;
++  for(guint j=0;j<3;j++) {
++   float v=matrix[i][j];
++   if(!isfinite(v) || (v!=0 && v!=1 && v!=-1)) return FALSE;
++   row+=v!=0;col+=matrix[j][i]!=0;
++  }
++  if(row!=1 || col!=1) return FALSE;
++ }
++ return TRUE;
++}
++static gboolean decode(const GArray *buf,const gfloat matrix[3][3],double *norm)
++{
++ if(!matrix_valid(matrix) || !buf || g_array_get_element_size((GArray*)buf)!=1 || !buf->len || buf->len>256) return FALSE;
++ /* These three standard sensor event types have the same field1 float-array,
++  * field2 accuracy schema in the pinned original source. */
++ SscAccelerometerResponse *msg=ssc_accelerometer_response__unpack(NULL,buf->len,(guint8*)buf->data);
++ if(!msg) return FALSE;
++ gboolean okay=msg->base.n_unknown_fields==0 && msg->n_acceleration==3 && msg->accuracy>=0 && msg->accuracy<=3;
++ double v[3]={0};
++ for(guint i=0;i<3 && okay;i++) {
++  if(!isfinite(msg->acceleration[i]) || fabs(msg->acceleration[i])>1000000) {okay=FALSE;break;}
++  for(guint j=0;j<3;j++) v[j]+=(double)matrix[j][i]*msg->acceleration[i];
++ }
++ *norm=sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);okay=okay && isfinite(*norm);
++ ssc_accelerometer_response__free_unpacked(msg,NULL);return okay;
++}
++static void report(SSCClient *client,guint32 id,guint64 high,guint64 low,GArray *buf,gpointer data)
++{
++ Probe *p=data;(void)client;
++ if(stopping || !p->enable_sent || high!=p->high || low!=p->low || id!=SSC_MSG_REPORT_MEASUREMENT) return;
++ double norm;
++ if(!decode(buf,p->matrix,&norm)) {p->invalid++;return;}
++ /* Burst descriptors can deliver more than the fixed receipt cap. Those are
++  * valid excess samples, not decoder errors, and are never published. */
++ if(p->samples>=64) return;
++ if(!p->samples || norm<p->norm_min) p->norm_min=norm;
++ if(!p->samples || norm>p->norm_max) p->norm_max=norm;
++ p->samples++;
++}
++static void maybe_finish(void)
++{
++ if(!stopping) return;
++ for(guint i=0;i<3;i++) if(probes[i].enable_sent && !probes[i].disable_sent) return;
++ for(guint i=0;i<3;i++) if(probes[i].disable_sent && !probes[i].disabled) return;
++ g_main_loop_quit(loop);
++}
++static void disabled(GObject *object,GAsyncResult *result,gpointer data)
++{
++ Probe *p=data;GError *error=NULL;
++ p->disabled=ssc_client_send_finish(SSC_CLIENT(object),result,&error);
++ if(!p->disabled) {failed=TRUE;g_main_loop_quit(loop);}
++ g_clear_error(&error);maybe_finish();
++}
++static void stop_samples(void)
++{
++ if(stopping) return;
++ stopping=TRUE;
++ for(guint i=0;i<3;i++) {
++  Probe *p=&probes[i];
++  if(p->enable_sent) {
++   p->disable_sent=TRUE;
++   ssc_client_send(p->client,p->high,p->low,SSC_MSG_REQUEST_DISABLE_REPORT,NULL,NULL,disabled,p);
++  }
++ }
++ maybe_finish();
++}
++static gboolean collect_deadline(gpointer data)
++{(void)data;sample_timer=0;stop_samples();return G_SOURCE_REMOVE;}
++static void enabled(GObject *object,GAsyncResult *result,gpointer data)
++{
++ Probe *p=data;GError *error=NULL;
++ p->enabled=ssc_client_send_finish(SSC_CLIENT(object),result,&error);
++ if(!p->enabled) {failed=TRUE;stop_samples();}
++ g_clear_error(&error);
++}
++static void discovered(GObject *object,GAsyncResult *result,gpointer data)
++{
++ Probe *p=data;GError *error=NULL;(void)object;
++ p->sensor=ssc_sensor_new_finish(result,&error);g_clear_error(&error);
++ if(p->sensor) {
++  gfloat (*matrix)[3]=NULL;guint stream=0;
++  g_object_get(p->sensor,SSC_SENSOR_AVAILABLE,&p->available,SSC_SENSOR_UID_HIGH,&p->high,
++   SSC_SENSOR_UID_LOW,&p->low,SSC_SENSOR_CLIENT,&p->client,SSC_SENSOR_STREAM_TYPE,&stream,
++   SSC_SENSOR_MOUNT_MATRIX,&matrix,NULL);
++  if(!matrix || stream!=SSC_STREAM_TYPE_CONTINUOUS) p->available=FALSE;
++  else {
++   for(guint i=0;i<3;i++) for(guint j=0;j<3;j++) p->matrix[i][j]=matrix[i][j];
++   p->available=p->available && matrix_valid(p->matrix);
++  }
++ }
++ if(++discovery_done!=3) return;
++ for(guint i=0;i<3;i++) if(!probes[i].available ||
++    !ssc_phone_sample_enroll(i,probes[i].high,probes[i].low)) {failed=TRUE;stop_samples();return;}
++ SscEnableConfigRequest msg=SSC_ENABLE_CONFIG_REQUEST__INIT;msg.sample_rate=5.0f;
++ GArray *payload=g_array_new(FALSE,FALSE,1);
++ g_array_set_size(payload,ssc_enable_config_request__get_packed_size(&msg));
++ ssc_enable_config_request__pack(&msg,(guint8*)payload->data);
++ for(guint i=0;i<3;i++) {
++  Probe *q=&probes[i];q->handler=g_signal_connect(q->client,"report",G_CALLBACK(report),q);q->enable_sent=TRUE;
++  ssc_client_send_for_sensor(q->client,q->type,q->high,q->low,SSC_MSG_REQUEST_ENABLE_REPORT_CONTINUOUS,
++   payload,NULL,enabled,q);
++ }
++ g_array_unref(payload);sample_timer=g_timeout_add(3000,collect_deadline,NULL);
++}
++static gboolean deadline(gpointer data)
++{(void)data;failed=TRUE;stop_samples();g_main_loop_quit(loop);return G_SOURCE_REMOVE;}
++int main(int argc,char **argv)
++{
++ if(argc!=1) return 2;
++ (void)argv;
++ if(!ssc_phone_sample_lock()) return 3;
++ loop=g_main_loop_new(NULL,FALSE);cancel=g_cancellable_new();
++ guint timer=g_timeout_add(15000,deadline,NULL);
++ for(guint i=0;i<3;i++) ssc_sensor_new((gchar*)probes[i].type,cancel,discovered,&probes[i]);
++ g_main_loop_run(loop);
++ if(g_main_context_find_source_by_id(NULL,timer)) g_source_remove(timer);
++ if(sample_timer) g_source_remove(sample_timer);
++ gboolean okay=!failed && stopping && discovery_done==3;
++ for(guint i=0;i<3;i++) {
++  Probe *p=&probes[i];
++  okay=okay && p->enabled && p->disabled && p->samples>=3 && !p->invalid;
++  printf("SSC_PHONE_SAMPLE type=%s enabled=%u disabled=%u count=%u invalid=%u norm_min=%.6g norm_max=%.6g\n",
++   p->type,p->enabled,p->disabled,p->samples,p->invalid,p->norm_min,p->norm_max);
++  if(p->handler) g_signal_handler_disconnect(p->client,p->handler);
++ }
++ fflush(stdout);g_cancellable_cancel(cancel);
++ for(guint i=0;i<3;i++) {g_clear_object(&probes[i].client);g_clear_object(&probes[i].sensor);}
++ g_clear_object(&cancel);g_main_loop_unref(loop);
++ printf("SSC_PHONE_SAMPLE_RESULT complete=%s rate_hz=5 collection_ms=3000 cleanup_returned=yes\n",okay?"yes":"no");
++ return okay?0:1;
++}
+--- /dev/null
++++ b/src/phone-sample-tests.c
+@@ -0,0 +1,84 @@
++/* SPDX-License-Identifier: GPL-3.0-or-later */
++#define main diagnostic_main
++#include "phone-ssc-sample-probe.c"
++#undef main
++static guint qmi_calls;static gboolean send_done,send_expected;
++void qmi_client_ssc_control(QmiClientSsc *self,QmiMessageSscControlInput *input,guint timeout,
++ GCancellable *cancellable,GAsyncReadyCallback callback,gpointer user_data)
++{
++ (void)self;(void)input;(void)timeout;(void)cancellable;(void)callback;
++ qmi_calls++;
++ /* Complete the original SSC send task at the mocked QMI boundary. */
++ g_task_return_boolean(G_TASK(user_data),TRUE);g_object_unref(user_data);
++}
++static void sent(GObject *source,GAsyncResult *result,gpointer data)
++{
++ GError *error=NULL;(void)data;
++ g_assert_cmpint(ssc_client_send_finish(SSC_CLIENT(source),result,&error),==,send_expected);
++ if(!send_expected) g_assert_error(error,G_IO_ERROR,G_IO_ERROR_PERMISSION_DENIED);
++ else g_assert_no_error(error);
++ g_clear_error(&error);send_done=TRUE;
++}
++static void send_case(SSCClient *client,guint64 high,guint64 low,guint32 id,GArray *payload,gboolean okay)
++{
++ send_done=FALSE;send_expected=okay;guint before=qmi_calls;
++ ssc_client_send(client,high,low,id,payload,NULL,sent,NULL);
++ while(!send_done) g_main_context_iteration(NULL,TRUE);
++ g_assert_cmpuint(qmi_calls,==,before+(okay?1:0));
++}
++static GArray *rate(float hz)
++{
++ SscEnableConfigRequest msg=SSC_ENABLE_CONFIG_REQUEST__INIT;msg.sample_rate=hz;
++ GArray *buf=g_array_new(FALSE,FALSE,1);g_array_set_size(buf,ssc_enable_config_request__get_packed_size(&msg));
++ ssc_enable_config_request__pack(&msg,(guint8*)buf->data);return buf;
++}
++static void transport(void)
++{
++ if(!g_test_subprocess()) {g_test_trap_subprocess(NULL,5*G_USEC_PER_SEC,0);g_test_trap_assert_passed();return;}
++ g_assert_true(ssc_phone_sample_lock());g_assert_false(ssc_phone_sample_lock());
++ g_assert_false(ssc_phone_sample_enroll(3,1,2));g_assert_false(ssc_phone_sample_enroll(0,0,0));
++ g_assert_true(ssc_phone_sample_enroll(0,1,2));g_assert_false(ssc_phone_sample_enroll(1,1,2));
++ g_assert_false(ssc_phone_sample_enroll(0,3,4));
++ SSCClient *client=g_object_new(SSC_TYPE_CLIENT,NULL);GArray *good=rate(5);
++ send_case(client,3,4,513,good,FALSE);send_case(client,1,2,10,NULL,FALSE);
++ const float wrong[]={0,-1,4,6,NAN,INFINITY};
++ for(guint i=0;i<G_N_ELEMENTS(wrong);i++) {
++  GArray *buf=rate(wrong[i]);send_case(client,1,2,513,buf,FALSE);g_array_unref(buf);
++ }
++ GArray *unknown=rate(5);guint8 extra[]={0x10,0x01};g_array_append_vals(unknown,extra,2);
++ send_case(client,1,2,513,unknown,FALSE);g_array_unref(unknown);
++ send_case(client,1,2,514,NULL,FALSE);send_case(client,1,2,513,NULL,FALSE);
++ send_case(client,1,2,513,good,TRUE);send_case(client,1,2,513,good,FALSE);
++ send_case(client,1,2,10,good,FALSE);send_case(client,1,2,10,NULL,TRUE);
++ send_case(client,1,2,10,NULL,FALSE);send_case(client,1,2,513,good,FALSE);
++ g_assert_cmpuint(qmi_calls,==,2);g_array_unref(good);g_object_unref(client);
++}
++static void cannot_upgrade(void)
++{
++ if(!g_test_subprocess()) {g_test_trap_subprocess(NULL,5*G_USEC_PER_SEC,0);g_test_trap_assert_passed();return;}
++ ssc_phone_lock_metadata_only();g_assert_false(ssc_phone_sample_lock());
++ g_assert_false(ssc_phone_sample_enroll(0,1,2));
++ GArray *buf=rate(5);g_assert_false(ssc_phone_request_allowed(1,2,513,buf));g_array_unref(buf);
++}
++static void vectors(void)
++{
++ gfloat matrix[3][3]={{0,-1,0},{1,0,0},{0,0,1}};double norm=0;
++ float v[]={3,4,0};SscAccelerometerResponse msg=SSC_ACCELEROMETER_RESPONSE__INIT;
++ msg.n_acceleration=3;msg.acceleration=v;msg.accuracy=3;
++ GArray *buf=g_array_new(FALSE,FALSE,1);
++ for(guint i=0;i<6;i++) {
++  msg.n_acceleration=i==1?2:3;msg.accuracy=i==2?4:3;v[0]=i==3?NAN:i==4?INFINITY:3;
++  g_array_set_size(buf,ssc_accelerometer_response__get_packed_size(&msg));
++  ssc_accelerometer_response__pack(&msg,(guint8*)buf->data);
++  if(i==5) g_array_set_size(buf,1);
++  g_assert_cmpint(decode(buf,matrix,&norm),==,i==0);
++  if(i==0) g_assert_cmpfloat(norm,==,5);
++ }
++ g_array_unref(buf);
++}
++int main(int argc,char **argv)
++{
++ g_test_init(&argc,&argv,NULL);g_test_add_func("/phone-samples/actual-send-policy",transport);
++ g_test_add_func("/phone-samples/metadata-cannot-upgrade",cannot_upgrade);
++ g_test_add_func("/phone-samples/real-protobuf-vector-decoder",vectors);return g_test_run();
++}

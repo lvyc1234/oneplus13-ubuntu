@@ -1,0 +1,14 @@
+[Unit]
+Description=OnePlus 13 stereo follows the actual internal display orientation
+ConditionPathExists=/run/oneplus13/ram-session
+After=oneplus13-stereo-filter.service
+Requires=oneplus13-stereo-filter.service
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/libexec/oneplus13-stereo-orientation.py
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

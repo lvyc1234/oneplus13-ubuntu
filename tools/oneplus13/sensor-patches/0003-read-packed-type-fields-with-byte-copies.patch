@@ -1,0 +1,43 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH] libhexagonrpc: read packed type fields without unaligned casts
+
+The existing RPC test's packed type puts a native pointer immediately after a
+uint32_t length. UBSan exposes the pointer load at an address aligned to four
+bytes on a 64-bit host. Copy the length and pointer through their aligned local
+variables and advance the byte cursor by the same sizes. This preserves the
+existing packed in/out descriptor layout; no padding or wire ABI changes.
+The existing packed-type RPC regression is the reproducer. Keep alignment
+sanitization enabled. Apply only to the phone supplemental build.
+
+--- a/libhexagonrpc/hexagonrpc.c
++++ b/libhexagonrpc/hexagonrpc.c
+@@ -101,10 +101,10 @@
+ 				*inst = (char *) *inst + size;
+ 				break;
+ 			case HRPC_ARG_BLOB_SEQ:
+-				arg32 = *(const uint32_t *) *inst;
+-				*inst = (uint32_t *) *inst + 1;
+-				ptr = *(void **) *inst;
+-				*inst = (void **) *inst + 1;
++				memcpy(&arg32, *inst, sizeof(arg32));
++				*inst = (const char *) *inst + sizeof(arg32);
++				memcpy(&ptr, *inst, sizeof(ptr));
++				*inst = (const char *) *inst + sizeof(ptr);
+ 
+ 				size = (size_t) type->p[i].d * arg32;
+ 
+@@ -139,10 +139,10 @@
+ 				*inst = (char *) *inst + size;
+ 				break;
+ 			case HRPC_ARG_BLOB_SEQ:
+-				arg32 = *(const uint32_t *) *inst;
+-				*inst = (uint32_t *) *inst + 1;
+-				ptr = *(void **) *inst;
+-				*inst = (void **) *inst + 1;
++				memcpy(&arg32, *inst, sizeof(arg32));
++				*inst = (char *) *inst + sizeof(arg32);
++				memcpy(&ptr, *inst, sizeof(ptr));
++				*inst = (char *) *inst + sizeof(ptr);
+ 
+ 				size = (size_t) type->p[i].d * arg32;
+ 

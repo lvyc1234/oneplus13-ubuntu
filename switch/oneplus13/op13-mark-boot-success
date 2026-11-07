@@ -1,0 +1,20 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+set -eu
+
+q=/usr/local/libexec/op13-qbootctl
+exec 9>/run/oneplus13/slot-state.lock
+flock -w 10 9
+grep -Fxq ONEPLUS13_PERSISTENT_ROOT_READY /run/evidence/rootfs.txt
+sha256sum --check --strict /etc/op13-boot-b.sha256
+[ "$("$q" -a)" = 'Active slot: _b' ] || exit 0
+[ "$("$q" -b a)" = 'SLOT _a: is marked bootable' ]
+[ "$("$q" -b b)" = 'SLOT _b: is marked bootable' ]
+case "$("$q" -n b)" in
+    'SLOT _b: is marked successful') exit 0 ;;
+    'SLOT _b: is not marked successful') ;;
+    *) exit 1 ;;
+esac
+"$q" -m b
+sync
+[ "$("$q" -n b)" = 'SLOT _b: is marked successful' ]

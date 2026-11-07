@@ -1,0 +1,96 @@
+name: OnePlus 13 platform gates and exact rootfs handoff
+on:
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  gates:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Run phone offline checks on native ARM64
+        run: |
+          python3 -m unittest discover -s tests -p 'test_oneplus13*.py' -v
+          bash -n tools/oneplus13/ram-platform-prerequisites.sh
+          gcc -Wall -Wextra -Werror -fsanitize=address,undefined tools/oneplus13/audio-draft/profile-file-test.c -o /tmp/acf-file-test
+          if /tmp/acf-file-test /dev/null; then exit 1; fi
+  handoff:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install emulator tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends squashfs-tools qemu-system-arm
+      - uses: actions/download-artifact@v4
+        with:
+          name: oneplus13-offline-1f5c1128d42a62244bef9974e58cfe07adf29f7d
+          run-id: 40146822835
+          github-token: ${{ github.token }}
+          path: out/exact-kernel
+      - uses: actions/download-artifact@v4
+        with:
+          name: oneplus13-ubuntu-26.04.1-gnome-03ecbd66a3a55c11edaa78daab4bb8d4702d9e11
+          run-id: 40212524437
+          github-token: ${{ github.token }}
+          path: out/exact-rootfs
+      - name: Boot exact SquashFS through HTTP, guard and automatic deadline
+        run: python3 tools/oneplus13/qemu-exact-rootfs.py --kernel out/exact-kernel --rootfs out/exact-rootfs/rootfs.squashfs --output out/exact-handoff
+      - uses: actions/upload-artifact@v4
+        if: always() && !cancelled()
+        with:
+          name: oneplus13-exact-rootfs-handoff-${{ github.sha }}
+          path: out/exact-handoff/
+          retention-days: 7
+  assembled:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install assembly and emulator tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends squashfs-tools qemu-system-arm
+      - uses: actions/download-artifact@v4
+        with:
+          name: oneplus13-offline-1f5c1128d42a62244bef9974e58cfe07adf29f7d
+          run-id: 40146822835
+          github-token: ${{ github.token }}
+          path: out/exact-kernel
+      - uses: actions/download-artifact@v4
+        with:
+          name: oneplus13-ubuntu-26.04.1-gnome-03ecbd66a3a55c11edaa78daab4bb8d4702d9e11
+          run-id: 40212524437
+          github-token: ${{ github.token }}
+          path: out/exact-rootfs
+      - uses: actions/download-artifact@v4
+        with:
+          name: erhai-mesa-545787e4e4d47e975a0baa20cce42ce526aa116c
+          run-id: 40099943186
+          github-token: ${{ github.token }}
+          path: out/exact-mesa
+      - name: Assemble matching modules and graphics without private inputs
+        run: |
+          mapfile -t debs < <(find out/exact-mesa -type f -name '*.deb')
+          test "${#debs[@]}" = 1
+          sudo python3 tools/oneplus13/assemble-ram-rootfs.py --base out/exact-rootfs/rootfs.squashfs --kernel out/exact-kernel --mesa "${debs[0]}" --output out/assembled-rootfs
+      - name: Verify assembled rootfs handoff and automatic deadline
+        run: python3 tools/oneplus13/qemu-exact-rootfs.py --kernel out/exact-kernel --rootfs out/assembled-rootfs/rootfs.squashfs --assembled-manifest out/assembled-rootfs/manifest.json --output out/assembled-handoff
+      - uses: actions/upload-artifact@v4
+        if: always() && !cancelled()
+        with:
+          name: oneplus13-assembled-ram-rootfs-${{ github.sha }}
+          path: |
+            out/assembled-rootfs/
+            out/assembled-handoff/
+          retention-days: 7

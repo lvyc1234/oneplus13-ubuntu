@@ -1,0 +1,235 @@
+From: Nihal Kumar Gupta <nihal.gupta@oss.qualcomm.com>
+Date: Sat, 17 Oct 2026 22:43:11 +0530
+Subject: [PATCH RFC 4/6] phy: qcom: mipi-csi2: Accept C-PHY mode and add  register sequence
+Message-Id: <20261017-cphy_support-v1-4-8b0e1237ce95@oss.qualcomm.com>
+
+The CSI-2 PHY core rejects all modes except D-PHY, so CAMSS cannot pass
+C-PHY stream configuration to the PHY provider. Accept PHY_MODE_MIPI_CPHY
+in set_mode() and configure(). Validate the trio count and store the C-PHY
+link frequency and timing in the stream configuration.
+
+C-PHY programming needs a common base sequence and a data-rate specific
+sequence, while D-PHY keeps using its existing sequence. Add
+mipi_csi2phy_cphy_rate_settings descriptor and select the register
+sequence from the configured PHY mode. Leave SoC-specific C-PHY register
+data to separate patches.
+
+Signed-off-by: Nihal Kumar Gupta <nihal.gupta@oss.qualcomm.com>
+---
+ drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c | 51 +++++++++++++++++-----
+ drivers/phy/qualcomm/phy-qcom-mipi-csi2-core.c     | 51 ++++++++++++++++------
+ drivers/phy/qualcomm/phy-qcom-mipi-csi2.h          | 17 ++++++++
+ 3 files changed, 96 insertions(+), 23 deletions(-)
+
+diff --git a/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c b/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c
+index 79c7fa57d059b29f2f72a0c1208e07115b3fb049..30f7f39ba855a0a2921189050f0084dead207fbd 100644
+--- a/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c
++++ b/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c
+@@ -266,14 +266,48 @@ static void phy_qcom_mipi_csi2_write_regs(struct mipi_csi2phy_device *csi2phy,
+ 	}
+ }
+ 
+-static void
++static int
+ phy_qcom_mipi_csi2_gen2_config_lanes(struct mipi_csi2phy_device *csi2phy,
+ 				     u8 settle_cnt)
+ {
+ 	const struct mipi_csi2phy_device_regs *regs = csi2phy_dev_to_regs(csi2phy);
++	u64 bit_rate;
++	int i;
++
++	switch (csi2phy->phy_mode) {
++	case PHY_MODE_MIPI_CPHY:
++		if (!regs->cphy || !regs->num_cphy)
++			return -EINVAL;
++
++		/*
++		 * link_freq = symbol_rate / 2; convert to effective bit rate
++		 * (bits/s) for comparison against the bandwidth table:
++		 * bit_rate = link_freq * 2 * 16 / 7 = link_freq * 32 / 7
++		 */
++		bit_rate = div_u64((u64)csi2phy->stream_cfg.link_freq * 32, 7);
++
++		for (i = 0; i < regs->num_cphy; i++) {
++			if (regs->cphy[i].bandwidth >= bit_rate)
++				break;
++		}
++
++		if (i == regs->num_cphy)
++			i = regs->num_cphy - 1;
++
++		phy_qcom_mipi_csi2_write_regs(csi2phy, regs->cphy[i].cphy_init_seq,
++						 regs->cphy[i].num_regs,
++						 settle_cnt);
++		break;
++	case PHY_MODE_MIPI_DPHY:
++		phy_qcom_mipi_csi2_write_regs(csi2phy, regs->dphy->dphy_init_seq,
++						 regs->dphy->num_regs,
++						 settle_cnt);
++		break;
++	default:
++		return -EINVAL;
++	}
+ 
+-	phy_qcom_mipi_csi2_write_regs(csi2phy, regs->dphy->dphy_init_seq,
+-					 regs->dphy->num_regs, settle_cnt);
++	return 0;
+ }
+ 
+ static int phy_qcom_mipi_csi2_lanes_enable(struct mipi_csi2phy_device *csi2phy,
+@@ -283,12 +317,7 @@ static int phy_qcom_mipi_csi2_lanes_enable(struct mipi_csi2phy_device *csi2phy,
+ 	struct mipi_csi2phy_lanes_cfg *lane_cfg = &cfg->lane_cfg;
+ 	u8 settle_cnt;
+ 	u8 val;
+-	int i;
+-
+-	if (cfg->link_freq <= 0)
+-		return -EINVAL;
+-
+-	settle_cnt = phy_qcom_mipi_csi2_settle_cnt_calc(cfg->link_freq, csi2phy->timer_clk_rate);
++	int i, ret;
+ 	if (!settle_cnt)
+ 		return -ENODEV;
+ 
+@@ -329,7 +358,9 @@ static int phy_qcom_mipi_csi2_lanes_enable(struct mipi_csi2phy_device *csi2phy,
+ 	writel(val, csi2phy->base +
+ 	       CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->common_regs_offset, 0));
+ 
+-	phy_qcom_mipi_csi2_gen2_config_lanes(csi2phy, settle_cnt);
++	ret = phy_qcom_mipi_csi2_gen2_config_lanes(csi2phy, settle_cnt);
++	if (ret)
++		return ret;
+ 
+ 	/* IRQ_MASK registers - disable all interrupts */
+ 	for (i = CSI_COMMON_STATUS_NUM; i < CSI_CTRL_STATUS_INDEX; i++) {
+diff --git a/drivers/phy/qualcomm/phy-qcom-mipi-csi2-core.c b/drivers/phy/qualcomm/phy-qcom-mipi-csi2-core.c
+index c0a4fa20eaf0c87f6c18b35e625f5ba1769c94e7..56b8830d69ee34280119d8b813ede643252e3606 100644
+--- a/drivers/phy/qualcomm/phy-qcom-mipi-csi2-core.c
++++ b/drivers/phy/qualcomm/phy-qcom-mipi-csi2-core.c
+@@ -100,23 +100,46 @@ static int phy_qcom_mipi_csi2_configure(struct phy *phy,
+ 					union phy_configure_opts *opts)
+ {
+ 	struct mipi_csi2phy_device *csi2phy = phy_get_drvdata(phy);
+-	struct phy_configure_opts_mipi_dphy *dphy_cfg = &opts->mipi_dphy;
+ 	struct mipi_csi2phy_stream_cfg *stream_cfg = &csi2phy->stream_cfg;
+-	int ret;
++	int ret = 0;
+ 
+-	ret = phy_mipi_dphy_config_validate(dphy_cfg);
+-	if (ret)
+-		return ret;
++	if (csi2phy->phy_mode == PHY_MODE_MIPI_DPHY) {
++		struct phy_configure_opts_mipi_dphy *dphy_cfg = &opts->mipi_dphy;
+ 
+-	if (dphy_cfg->lanes < 1 || dphy_cfg->lanes > CSI2_MAX_DATA_LANES)
+-		return -EINVAL;
++		ret = phy_mipi_dphy_config_validate(dphy_cfg);
++		if (ret)
++			return ret;
+ 
+-	if (dphy_cfg->lanes != stream_cfg->num_data_lanes)
+-		return -EINVAL;
++		if (dphy_cfg->lanes < 1 || dphy_cfg->lanes > CSI2_MAX_DATA_LANES)
++			return -EINVAL;
+ 
+-	stream_cfg->link_freq = dphy_cfg->hs_clk_rate;
++		if (dphy_cfg->lanes != stream_cfg->num_data_lanes)
++			return -EINVAL;
+ 
+-	return 0;
++		stream_cfg->link_freq = dphy_cfg->hs_clk_rate;
++		stream_cfg->num_data_lanes = dphy_cfg->lanes;
++	} else if (csi2phy->phy_mode == PHY_MODE_MIPI_CPHY) {
++		struct phy_configure_opts_mipi_cphy *cphy_cfg = &opts->mipi_cphy;
++
++		if (cphy_cfg->trios < 1 || cphy_cfg->trios > CSI2_MAX_DATA_TRIOS)
++			return -EINVAL;
++
++		if (!cphy_cfg->t_prepare_ns || !cphy_cfg->t_preamble_ns) {
++			dev_err(csi2phy->dev,
++				"Invalid C-PHY timing: t_prepare_ns=%u t_preamble_ns=%u\n",
++				cphy_cfg->t_prepare_ns, cphy_cfg->t_preamble_ns);
++			return -EINVAL;
++		}
++
++		stream_cfg->link_freq = cphy_cfg->symbol_rate / 2;
++		stream_cfg->num_data_lanes = cphy_cfg->trios;
++		stream_cfg->t_prepare_ns = cphy_cfg->t_prepare_ns;
++		stream_cfg->t_preamble_ns = cphy_cfg->t_preamble_ns;
++	} else {
++		ret = -EINVAL;
++	}
++
++	return ret;
+ }
+ 
+ static int phy_qcom_mipi_csi2_set_mode(struct phy *phy,
+@@ -124,7 +147,8 @@ static int phy_qcom_mipi_csi2_set_mode(struct phy *phy,
+ {
+ 	struct mipi_csi2phy_device *csi2phy = phy_get_drvdata(phy);
+ 
+-	if (mode != PHY_MODE_MIPI_DPHY)
++	if (mode != PHY_MODE_MIPI_DPHY &&
++	    mode != PHY_MODE_MIPI_CPHY)
+ 		return -EOPNOTSUPP;
+ 
+ 	csi2phy->phy_mode = mode;
+@@ -278,7 +302,8 @@ static int phy_qcom_mipi_csi2_parse_routing(struct mipi_csi2phy_device *csi2phy)
+ 	bus_type = MEDIA_BUS_TYPE_CSI2_DPHY;
+ 	fwnode_property_read_u32(ep, "bus-type", &bus_type);
+ 
+-	if (bus_type != MEDIA_BUS_TYPE_CSI2_DPHY) {
++	if (bus_type != MEDIA_BUS_TYPE_CSI2_DPHY &&
++	    bus_type != MEDIA_BUS_TYPE_CSI2_CPHY) {
+ 		ret = -EOPNOTSUPP;
+ 		dev_err(dev, "Unsupported bus-type %u\n", bus_type);
+ 		goto out_put;
+diff --git a/drivers/phy/qualcomm/phy-qcom-mipi-csi2.h b/drivers/phy/qualcomm/phy-qcom-mipi-csi2.h
+index 528e80109c2f96b8c66d989ac834e30e7b38c732..31103546e4874ffd519fe7f386d779f17325cb30 100644
+--- a/drivers/phy/qualcomm/phy-qcom-mipi-csi2.h
++++ b/drivers/phy/qualcomm/phy-qcom-mipi-csi2.h
+@@ -11,6 +11,7 @@
+ #include <linux/phy/phy.h>
+ 
+ #define CSI2_MAX_DATA_LANES	4
++#define CSI2_MAX_DATA_TRIOS	3
+ #define CSI2_DEFAULT_CLK_LANE	7
+ 
+ struct mipi_csi2phy_lane {
+@@ -26,6 +27,8 @@ struct mipi_csi2phy_lanes_cfg {
+ struct mipi_csi2phy_stream_cfg {
+ 	s64 link_freq;
+ 	u8 num_data_lanes;
++	u32 t_prepare_ns;
++	u32 t_preamble_ns;
+ 	struct mipi_csi2phy_lanes_cfg lane_cfg;
+ };
+ 
+@@ -52,8 +55,22 @@ struct mipi_csi2phy_dphy_rate_settings {
+ 	unsigned int num_regs;
+ };
+ 
++struct mipi_csi2phy_cphy_rate_settings {
++	/**
++	 * @bandwidth: Maximum effective data rate for this register sequence,
++	 * in bits/s (= symbol_rate * 16 / 7). The first entry whose bandwidth
++	 * is >= the configured link bit rate is selected; the last entry is
++	 * a fallback.
++	 */
++	u64 bandwidth;
++	const struct mipi_csi2phy_lane_regs *cphy_init_seq;
++	unsigned int num_regs;
++};
++
+ struct mipi_csi2phy_device_regs {
+ 	const struct mipi_csi2phy_dphy_rate_settings *dphy;
++	const struct mipi_csi2phy_cphy_rate_settings *cphy;
++	unsigned int num_cphy;
+ 	const u32 common_regs_offset;
+ };
+ 
+
+-- 
+2.34.1
+
+

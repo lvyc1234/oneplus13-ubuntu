@@ -1,0 +1,75 @@
+--- a/src/libssc-sensor.c
++++ b/src/libssc-sensor.c
+@@ -409,11 +409,13 @@
+ 					}
+ 
+ 					/* Fallback to identity matrix in case matrix is all 0 */
+-					gint sum = 0;
+-					for (gsize k = 0; k < 9; k++)
+-						sum += priv->mount_matrix[k/3][k%3];
+-
+-					if (sum == 0) {
++					gboolean all_zero = TRUE;
++					for (gsize k = 0; k < 9; k++) {
++						if (priv->mount_matrix[k/3][k%3] != 0.0f)
++							all_zero = FALSE;
++					}
++
++					if (all_zero) {
+ 						priv->mount_matrix[0][0] = 1.0;
+ 						priv->mount_matrix[1][1] = 1.0;
+ 						priv->mount_matrix[2][2] = 1.0;
+--- a/tests/phone-sensor-properties.inc
++++ b/tests/phone-sensor-properties.inc
+@@ -1,5 +1,38 @@
+ /* SPDX-License-Identifier: GPL-3.0-or-later */
+ /* Compiled with the actual sensor implementation, without QMI or streams. */
++
++/* Exercise the actual protobuf attribute receive path, not a duplicate sum. */
++static void matrix_case(const gfloat input[9], gboolean fallback)
++{
++    SSCSensor *sensor = g_object_new(SSC_TYPE_SENSOR, NULL);
++    SSCSensorPrivate *priv = ssc_sensor_get_instance_private(sensor);
++    priv->uid_high=10; priv->uid_low=20;
++    ReportReceivedContext ctx={.sensor=sensor};
++    SscAttrValue values[9]; SscAttrValue *pointers[9];
++    for(guint i=0;i<9;i++) {
++        ssc_attr_value__init(&values[i]); values[i].has_f=TRUE;
++        values[i].f=input[i]; pointers[i]=&values[i];
++    }
++    SscAttrArrayValue array=SSC_ATTR_ARRAY_VALUE__INIT;
++    array.n_v=9;array.v=pointers;
++    SscAttr attr=SSC_ATTR__INIT;
++    attr.id=SSC_ATTRIBUTE_MOUNT_MATRIX;attr.value_array=&array;
++    SscAttr *attrs[]={&attr};
++    SscAttrResponse response=SSC_ATTR_RESPONSE__INIT;
++    response.n_attr=1;response.attr=attrs;
++    GArray *bytes=g_array_new(FALSE,FALSE,1);
++    g_array_set_size(bytes,ssc_attr_response__get_packed_size(&response));
++    ssc_attr_response__pack(&response,(guint8*)bytes->data);
++    if(fallback) g_test_expect_message(NULL,G_LOG_LEVEL_WARNING,"*all 0*");
++    report_received(NULL,SSC_MSG_RESPONSE_GET_ATTRIBUTES,10,20,bytes,&ctx);
++    if(fallback) g_test_assert_expected_messages();
++    for(guint i=0;i<9;i++) {
++        gfloat expected=fallback?(i/3==i%3?1.0f:0.0f):input[i];
++        g_assert_cmpfloat(priv->mount_matrix[i/3][i%3],==,expected);
++    }
++    g_array_unref(bytes);g_object_unref(sensor);
++}
++
+ int main(int argc, char **argv)
+ {
+     g_test_init(&argc, &argv, NULL);
+@@ -30,5 +63,12 @@
+     g_assert_false(value.available);
+     g_object_unref(sensor);
+     g_print("PHONE_SENSOR_TYPED_PROPERTIES_NO_QRTR_PASS\n");
++    const gfloat zero[9]={0};
++    const gfloat identity[9]={1,0,0,0,1,0,0,0,1};
++    const gfloat rotation[9]={1,0,0,0,0.70710677f,-0.70710677f,0,0.70710677f,0.70710677f};
++    const gfloat signed_axes[9]={0,-1,0,1,0,0,0,0,1};
++    matrix_case(zero,TRUE);matrix_case(identity,FALSE);
++    matrix_case(rotation,FALSE);matrix_case(signed_axes,FALSE);
++    g_print("PHONE_ACTUAL_ATTRIBUTE_MATRIX_PRESERVATION_PASS\n");
+     return 0;
+ }

@@ -1,0 +1,15 @@
+[Unit]
+Description=OnePlus 13 unity stereo permutation filter
+ConditionPathExists=/run/oneplus13/ram-session
+After=pipewire.service wireplumber.service
+BindsTo=pipewire.service
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/pipewire -c %t/oneplus13-stereo-filter.conf
+ExecStopPost=-/usr/libexec/oneplus13-stereo-session.py cap
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

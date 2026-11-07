@@ -1,0 +1,85 @@
+#!/system/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+set -eu
+
+module=${0%/*}
+device=/dev/block/by-name/shared_media
+media=/mnt/media_rw/op13-shared
+android=/mnt/media_rw/op13-original
+obb=/mnt/media_rw/op13-original-obb
+source=/data/media
+
+identity() { stat -c '%d:%i' "$1"; }
+
+[ "$(id -u)" = 0 ]
+[ "$(getprop ro.boot.slot_suffix)" = _a ]
+[ "$(getprop sys.user.0.ce_available)" = true ]
+[ "$(readlink /proc/self/ns/mnt)" = "$(readlink /proc/1/ns/mnt)" ]
+[ -b "$device" ]
+uuid=$(cat "$module/shared-uuid")
+blkid "$device" | grep -Fq "UUID=\"$uuid\""
+
+if grep -Fq " $source " /proc/self/mountinfo; then
+    [ "$(identity "$source")" = "$(identity "$media")" ]
+    [ "$(identity "$source/0/Android")" = "$(identity "$android")" ]
+    [ "$(identity "$source/obb")" = "$(identity "$obb")" ]
+    echo OP13_SHARED_MEDIA_READY
+    exit 0
+fi
+
+# The shared parent exposes owner 0 only. Preserve the Android and OBB
+# directories as separate binds from the encrypted volume.
+for entry in "$source"/* "$source"/.[!.]* "$source"/..?*; do
+    [ -e "$entry" ] || continue
+    case "${entry##*/}" in 0|obb) ;; *) exit 1 ;; esac
+done
+for path in "$source/0" "$source/0/Android" "$source/obb"; do
+    [ -d "$path" ]
+    [ ! -L "$path" ]
+done
+android_id=$(identity "$source/0/Android")
+obb_id=$(identity "$source/obb")
+for path in "$media" "$android" "$obb"; do
+    [ ! -e "$path" ]
+    [ ! -L "$path" ]
+done
+mkdir "$media" "$android" "$obb"
+mounted=0 saved_android=0 saved_obb=0 root_bound=0 android_bound=0 obb_bound=0
+cleanup() {
+    if [ "$obb_bound" = 1 ]; then /system/bin/umount "$source/obb" || return; fi
+    if [ "$android_bound" = 1 ]; then /system/bin/umount "$source/0/Android" || return; fi
+    if [ "$root_bound" = 1 ]; then /system/bin/umount "$source" || return; fi
+    if [ "$saved_obb" = 1 ]; then /system/bin/umount "$obb" || return; fi
+    if [ "$saved_android" = 1 ]; then /system/bin/umount "$android" || return; fi
+    if [ "$mounted" = 1 ]; then /system/bin/umount "$media" || return; fi
+    rmdir "$media" "$android" "$obb"
+}
+trap cleanup EXIT
+/system/bin/mount -t ext4 -o rw,nosuid,nodev,noexec,noatime,defcontext=u:object_r:media_rw_data_file:s0 "$device" "$media"
+mounted=1
+for path in "$media/0" "$media/0/Android" "$media/obb"; do
+    [ -d "$path" ]
+    [ ! -L "$path" ]
+done
+[ -z "$(ls -A "$media/0/Android")" ]
+[ -z "$(ls -A "$media/obb")" ]
+
+# Bind the children, since a bind of their parent would receive the
+# subsequent shared mount through /data's propagation group.
+/system/bin/mount --bind "$source/0/Android" "$android"
+saved_android=1
+/system/bin/mount --bind "$source/obb" "$obb"
+saved_obb=1
+/system/bin/mount --bind "$media" "$source"
+root_bound=1
+[ "$(identity "$android")" = "$android_id" ]
+[ "$(identity "$obb")" = "$obb_id" ]
+/system/bin/mount --bind "$android" "$source/0/Android"
+android_bound=1
+/system/bin/mount --bind "$obb" "$source/obb"
+obb_bound=1
+[ "$(identity "$source")" = "$(identity "$media")" ]
+[ "$(identity "$source/0/Android")" = "$android_id" ]
+[ "$(identity "$source/obb")" = "$obb_id" ]
+trap - EXIT
+echo OP13_SHARED_MEDIA_READY

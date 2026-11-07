@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Reboot to Fastboot
+Name[zh_CN]=重启到 Fastboot
+Comment=Restart into the bootloader for A/B slot selection
+Comment[zh_CN]=进入引导程序，以便通过 Fastboot 切换系统
+Exec=pkexec /usr/local/bin/op13-switch to-fastboot
+Icon=system-reboot
+Terminal=false
+Categories=System;

@@ -1,0 +1,19 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+set -eu
+mkdir -p /run/evidence
+echo ONEPLUS13_SYSTEMD_ALIVE > /run/evidence/systemd-alive.txt
+echo ONEPLUS13_SYSTEMD_ALIVE > /dev/kmsg
+while :; do
+    cat /proc/uptime > /run/evidence/uptime.txt
+    dmesg > /run/evidence/dmesg.txt
+    /usr/bin/timeout -k 1 3 /usr/bin/python3 /usr/libexec/oneplus13-display-diagnostics.py \
+        --output /run/evidence/display-diagnostics.json \
+        >/dev/null 2>&1 || true
+    for disk in /sys/class/block/*; do
+        [ -e "$disk/ro" ] || continue
+        printf '%s ' "${disk##*/}"
+        cat "$disk/ro"
+    done > /run/evidence/block-readonly.txt
+    sleep 5
+done

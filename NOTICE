@@ -1,8 +1,6 @@
 Third-party notices
 ===================
 
-Original integration code: Copyright (C) 2026 yzddmr6.
-
 The GPL-2.0-only license in LICENSE covers original integration code unless a
 file states otherwise. It does not replace third-party licenses or grant rights
 to firmware. File-level notices and original authorship remain applicable.
@@ -30,17 +28,11 @@ The Xiaomi Pad 6 Pro Linux project provided build and recovery design references
 sensor-stack integration experience and patches:
 https://github.com/yzddmr6/xiaomipad-6pro-mainline
 
-The MIT-licensed TuneD profile layout, PPD service mount and zram policy
-structure are adapted from yzddmr6/xiaomipad-8pro-mainline, TuneD integration
-commit 0a7914dc8adaeab45db847343b924c446000295a. Board frequencies are defined
-separately for erhai; file-level MIT notices are preserved.
-https://github.com/yzddmr6/xiaomipad-8pro-mainline
-
 Graphics, audio and sensors
 --------------------------
 Mesa and its device-table patch retain upstream authorship and licenses;
 packaging/mesa/source.json identifies the inputs, and Mesa's docs/license.rst
-and file notices apply. See docs/GRAPHICS.md for the integration boundary.
+and file notices apply. See docs/BUILD.md and docs/LICENSES.md for the integration boundary.
 Project source: https://gitlab.freedesktop.org/mesa/mesa
 
 AudioReach topology inputs are recorded in packaging/audio/source.json.
@@ -63,11 +55,6 @@ packages retain their own copyright and licensing notices. Binary deliveries
 must include the corresponding source information and materials required by
 their licenses. Upstream Ubuntu images and full stock ROMs are not mirrored here.
 
-Root filesystems include Mozilla's Firefox package unmodified; it retains
-Mozilla's licenses and trademark terms. The Mozilla APT configuration in
-packaging/erhai-firefox is based on TheMojoMan's oneplus-erhai-ubuntu:
-https://github.com/TheMojoMan/oneplus-erhai-ubuntu
-
 Firmware and device data
 -----------------------
 Qualcomm, OnePlus and Awinic binaries are separate from the project's code
@@ -80,9 +67,10 @@ as build references. Its source.json records the official OTA and per-image
 hashes; the original vendor and third-party terms still apply. These reference
 images remain separate from the project code license.
 
-Factory calibration, device addresses, credentials and private keys are not
-shared firmware. They must come from the user's own device or be generated for
-that installation, and must not appear in public images or source history.
+Unreviewed factory calibration, device addresses, credentials and private keys
+are excluded from public images and source history. The reviewed reference
+dataset is separately recorded in devices/oneplus13/qualified-data/PROVENANCE.md.
+Other installations must validate their own hardware data.
 
 Installation conversion tool
 ----------------------------
@@ -90,3 +78,22 @@ packaging/install-tools/ext2simg.c is the unchanged AOSP e2fsprogs converter,
 Copyright (C) 2016 The Android Open Source Project, under Apache-2.0. Its exact
 source revision and Ubuntu library inputs are recorded in the adjacent
 source.json. The downloaded libraries retain their own copyright and licenses.
+
+Original integration
+--------------------
+This project derives from yzddmr6/onepluspad-2pro-mainline. Upstream copyright
+notices, original source provenance and the preserved upstream branch remain.
+
+Qualcomm boot control helper
+----------------------------
+third_party/qbootctl is an unchanged source snapshot of linux-msm/qbootctl at
+39a6e6daaf029fb0a083777679a15ea2c18f72de. It is built as a separate executable.
+Its GPL-3.0-or-later notices, original authorship and GPL-3.0 license text apply.
+The matching source and license are installed with the persistent overlay.
+
+Qualified phone firmware and data
+---------------------------------
+devices/oneplus13/qualified-data/PROVENANCE.md and manifest.json record the
+phone-specific firmware, display data, memory layout and reviewed sensor data.
+Owner publication authorization does not grant third-party distribution rights.
+These inputs retain their vendor terms and are outside the project GPL grant.

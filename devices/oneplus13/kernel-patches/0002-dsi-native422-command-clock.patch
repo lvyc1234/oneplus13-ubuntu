@@ -1,0 +1,160 @@
+--- a/drivers/gpu/drm/msm/dsi/dsi_host.c
++++ b/drivers/gpu/drm/msm/dsi/dsi_host.c
+@@ -173,6 +173,7 @@
+ 	unsigned int lanes;
+ 	enum mipi_dsi_pixel_format format;
+ 	unsigned long mode_flags;
++	unsigned long hs_rate;
+ 
+ 	/* lane data parsed via DT */
+ 	int dlane_swap;
+@@ -636,6 +637,62 @@
+ 	return pclk_rate;
+ }
+ 
++/*
++ * A command-mode panel can advertise a characterized HS ceiling independent of
++ * its scan timings. Use the ceiling to finish each native422 burst promptly;
++ * CMD porches describe historical overhead, not the physical lane clock.
++ * Do not change the established video/C-PHY/bonded or unspecified-rate paths.
++ */
++static bool dsi_use_native422_hs_rate(const struct msm_dsi_host *msm_host,
++				    bool is_bonded_dsi)
++{
++	return msm_host->hs_rate && msm_host->dsc && msm_host->dsc->native_422 &&
++		!(msm_host->mode_flags & MIPI_DSI_MODE_VIDEO) &&
++		!msm_host->cphy_mode && !is_bonded_dsi;
++}
++
++static int dsi_native422_cmd_rates(const struct msm_dsi_host *msm_host,
++				 const struct drm_display_mode *mode,
++				 unsigned long *pixel_rate,
++				 unsigned long *byte_rate)
++{
++	const struct drm_dsc_config *dsc = msm_host->dsc;
++	u32 bpp = mipi_dsi_pixel_format_to_bpp(msm_host->format);
++	u32 slices_per_pkt = msm_host->dsc_slice_per_pkt ?: 1;
++	u64 line_bytes, frame_bits, refresh_hz, required_lane_rate;
++
++	if (!msm_host->lanes || msm_host->lanes > 4 || bpp != 30 ||
++	    mode->clock <= 0 || mode->hdisplay <= 0 || mode->vdisplay <= 0 ||
++	    mode->htotal < mode->hdisplay || mode->vtotal < mode->vdisplay ||
++	    !dsc->slice_width || !dsc->slice_chunk_size || !dsc->slice_count ||
++	    dsc->pic_width != mode->hdisplay || dsc->pic_height != mode->vdisplay ||
++	    dsc->slice_count * dsc->slice_width != dsc->pic_width ||
++	    slices_per_pkt > dsc->slice_count ||
++	    dsc->slice_count % slices_per_pkt)
++		return -EINVAL;
++
++	/* Round down to a whole byte clock, never exceed the advertised ceiling. */
++	*byte_rate = msm_host->hs_rate / 8;
++	if (!*byte_rate)
++		return -EINVAL;
++
++	/* Each packet has a four-byte header, a DCS opcode and a two-byte CRC. */
++	line_bytes = (u64)dsc->slice_count * dsc->slice_chunk_size +
++		     7 * (dsc->slice_count / slices_per_pkt);
++	frame_bits = line_bytes * mode->vdisplay * 8;
++	/* Round refresh upward: a conservative payload lower-bound check. */
++	refresh_hz = DIV_ROUND_UP_ULL((u64)mode->clock * 1000,
++				    (u64)mode->htotal * mode->vtotal);
++	required_lane_rate = DIV_ROUND_UP_ULL(frame_bits * refresh_hz,
++					    msm_host->lanes);
++	if (required_lane_rate > (u64)*byte_rate * 8)
++		return -ERANGE;
++
++	/* Retain MSM's uncompressed interface-bpp convention for the pixel clock. */
++	*pixel_rate = mult_frac(*byte_rate, 8 * msm_host->lanes, bpp);
++	return 0;
++}
++
+ unsigned long dsi_byte_clk_get_rate(struct mipi_dsi_host *host, bool is_bonded_dsi,
+ 				    const struct drm_display_mode *mode)
+ {
+@@ -644,6 +701,14 @@
+ 	u32 bpp = mipi_dsi_pixel_format_to_bpp(msm_host->format);
+ 	unsigned long pclk_rate = dsi_get_pclk_rate(mode, msm_host->dsc, is_bonded_dsi);
+ 	unsigned long pclk_bpp;
++
++	if (dsi_use_native422_hs_rate(msm_host, is_bonded_dsi)) {
++		unsigned long pixel_rate, byte_rate;
++
++		if (dsi_native422_cmd_rates(msm_host, mode, &pixel_rate, &byte_rate))
++			return 0; /* mode_valid must reject an impossible packet budget */
++		return byte_rate;
++	}
+ 
+ 	if (lanes == 0) {
+ 		pr_err("%s: forcing mdss_dsi lanes to 1\n", __func__);
+@@ -659,24 +724,35 @@
+ 	return pclk_bpp;
+ }
+ 
+-static void dsi_calc_pclk(struct msm_dsi_host *msm_host, bool is_bonded_dsi)
+-{
++static int dsi_calc_pclk(struct msm_dsi_host *msm_host, bool is_bonded_dsi)
++{
++	if (dsi_use_native422_hs_rate(msm_host, is_bonded_dsi))
++		return dsi_native422_cmd_rates(msm_host, msm_host->mode,
++					      &msm_host->pixel_clk_rate,
++					      &msm_host->byte_clk_rate);
++
+ 	msm_host->pixel_clk_rate = dsi_get_pclk_rate(msm_host->mode, msm_host->dsc, is_bonded_dsi);
+ 	msm_host->byte_clk_rate = dsi_byte_clk_get_rate(&msm_host->base, is_bonded_dsi,
+ 							msm_host->mode);
+ 
+ 	DBG("pclk=%lu, bclk=%lu", msm_host->pixel_clk_rate,
+ 				msm_host->byte_clk_rate);
++
++	return 0;
+ }
+ 
+ int dsi_calc_clk_rate_6g(struct msm_dsi_host *msm_host, bool is_bonded_dsi)
+ {
++	int ret;
++
+ 	if (!msm_host->mode) {
+ 		pr_err("%s: mode not set\n", __func__);
+ 		return -EINVAL;
+ 	}
+ 
+-	dsi_calc_pclk(msm_host, is_bonded_dsi);
++	ret = dsi_calc_pclk(msm_host, is_bonded_dsi);
++	if (ret)
++		return ret;
+ 	msm_host->esc_clk_rate = clk_get_rate(msm_host->esc_clk);
+ 	return 0;
+ }
+@@ -686,8 +762,11 @@
+ 	u32 bpp = mipi_dsi_pixel_format_to_bpp(msm_host->format);
+ 	unsigned int esc_mhz, esc_div;
+ 	unsigned long byte_mhz;
+-
+-	dsi_calc_pclk(msm_host, is_bonded_dsi);
++	int ret;
++
++	ret = dsi_calc_pclk(msm_host, is_bonded_dsi);
++	if (ret)
++		return ret;
+ 
+ 	msm_host->src_clk_rate = mult_frac(msm_host->pixel_clk_rate, bpp, 8);
+ 
+@@ -1721,6 +1800,7 @@
+ 	msm_host->lanes = dsi->lanes;
+ 	msm_host->format = dsi->format;
+ 	msm_host->mode_flags = dsi->mode_flags;
++	msm_host->hs_rate = dsi->hs_rate;
+ 	if (dsi->dsc) {
+ 		msm_host->dsc = dsi->dsc;
+ 		msm_host->dsc_slice_per_pkt = dsi->dsc_slice_per_pkt;
+--- a/drivers/gpu/drm/msm/dsi/dsi_manager.c
++++ b/drivers/gpu/drm/msm/dsi/dsi_manager.c
+@@ -414,6 +414,8 @@
+ 	unsigned long byte_clk_rate;
+ 
+ 	byte_clk_rate = dsi_byte_clk_get_rate(host, IS_BONDED_DSI(), mode);
++	if (!byte_clk_rate)
++		return MODE_CLOCK_RANGE;
+ 
+ 	opp = dev_pm_opp_find_freq_ceil(&pdev->dev, &byte_clk_rate);
+ 	if (!IS_ERR(opp)) {

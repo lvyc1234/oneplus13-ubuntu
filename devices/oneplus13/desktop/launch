@@ -1,0 +1,25 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# Sourced by PID1. Preparation is a child; only PID1 can execute switch_root.
+desktop_main() {
+    if ! /bin/oneplus13-ram-prepare > /run/evidence/rootfs.txt 2>&1; then
+        echo 'RAM root preparation failed; diagnostics and deadline remain active'
+        cat /run/evidence/rootfs.txt
+        return 1
+    fi
+    # Every PID belongs to this init. Never kill by executable name.
+    for pid in "${dhcp_pid:-}" "${http_pid:-}" "${telnet_pid:-}" "${serial_pid:-}" "${storage_pid:-}"; do
+        [ -n "$pid" ] || continue
+        case "$pid" in
+            "$dhcp_pid"|"$http_pid"|"$telnet_pid") kill -TERM -"$pid" 2>/dev/null || true ;;
+            *) kill "$pid" 2>/dev/null || true ;;
+        esac
+        wait "$pid" 2>/dev/null || true
+    done
+    protect_storage || { reboot -f -n; exit 1; }
+    kill "$watchdog_pid" 2>/dev/null || true
+    wait "$watchdog_pid" 2>/dev/null || true
+    echo ONEPLUS13_SWITCH_ROOT > /dev/kmsg
+    exec switch_root /newroot /sbin/init
+    exit 1
+}

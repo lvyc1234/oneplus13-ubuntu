@@ -1,0 +1,30 @@
+{
+  "scope": "OFFLINE_BACKPORT_CANDIDATE_NOT_PHONE_TESTED",
+  "reference_pin": "70b572544d504735e2924f6c3f5fe3bd726ef275",
+  "patches": [
+    {
+      "commit": "60299143d845884b1e0a3fa5200d28de0533b6de",
+      "path": "devices/oneplus13/kernel-patches/0026-gmu-clear-stale-rpmh.patch",
+      "sha256": "7d1609572374ffeac549a71c4ebaa689f3ef43a8b49cb69d030c0dab86f6bb9c",
+      "source": "https://github.com/yzddmr6/linux-sm8750-erhai/commit/60299143d845884b1e0a3fa5200d28de0533b6de"
+    },
+    {
+      "commit": "39919af08644b62f6bd457c297cfc1a0fc8cc4cf",
+      "path": "devices/oneplus13/kernel-patches/0027-gmu-dependency-votes.patch",
+      "sha256": "2a9ad601fbfc932ca78a0e274fde6716247815cdba6fcb13e1896baa7195fa03",
+      "source": "https://github.com/yzddmr6/linux-sm8750-erhai/commit/39919af08644b62f6bd457c297cfc1a0fc8cc4cf"
+    },
+    {
+      "commit": "1055cf6dc5d19be9eb57d99c5289f5d1de267453",
+      "path": "devices/oneplus13/kernel-patches/0028-gmu-drop-boot-vote.patch",
+      "sha256": "f2f40cc835891404928c2c8cc564127794a80ac4e8b134f26cf1262b96bf4e5f",
+      "source": "https://github.com/yzddmr6/linux-sm8750-erhai/commit/1055cf6dc5d19be9eb57d99c5289f5d1de267453"
+    },
+    {
+      "commit": "2379434f8d3b865bb9e52daafcd0a7b3a0ee270f",
+      "path": "devices/oneplus13/kernel-patches/0029-gmu-mask-hfi-before-boot.patch",
+      "sha256": "f8a8d4ca7bda4eccec625e064ea27b1fc252df351c57ba2a5df63545f4aef837",
+      "source": "https://github.com/yzddmr6/linux-sm8750-erhai/commit/2379434f8d3b865bb9e52daafcd0a7b3a0ee270f"
+    }
+  ]
+}

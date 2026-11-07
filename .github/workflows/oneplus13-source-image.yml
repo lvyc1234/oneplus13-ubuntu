@@ -1,0 +1,239 @@
+name: OnePlus 13 persistent Ubuntu
+on:
+  workflow_dispatch:
+    inputs:
+      all_on_server:
+        description: Run all jobs on the trusted ARM64 server
+        type: boolean
+        default: false
+      desktop_profile:
+        description: Full desktop or lightweight diagnostic desktop with MSM Resources
+        type: choice
+        options: [full, diagnostic]
+        default: full
+      use_server:
+        description: Use the owner's trusted ARM64 component runners (requires oneplus13-arm64 label)
+        type: boolean
+        default: false
+      runtime_qemu:
+        description: Optional runtime QEMU diagnostics (normally unnecessary for qualified unchanged inputs)
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      desktop_profile:
+        type: string
+        default: full
+      all_on_server:
+        type: boolean
+        default: false
+      use_server:
+        type: boolean
+        default: false
+      runtime_qemu:
+        type: boolean
+        default: false
+permissions:
+  contents: read
+env:
+  ONEPLUS13_SOURCE_QEMU: ${{ inputs.runtime_qemu && 'true' || 'false' }}
+concurrency:
+  group: oneplus13-source-image-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  ssc:
+    uses: ./.github/workflows/oneplus13-phone-ssc.yml
+    with:
+      # This small native job is more reliable on GitHub's hosted ARM runner
+      # than on the constrained self-hosted runner.
+      use_server: false
+  kernel:
+    runs-on: ${{ (inputs.use_server || inputs.all_on_server) && fromJSON('["self-hosted", "Linux", "ARM64", "oneplus13-arm64"]') || fromJSON('["ubuntu-24.04-arm"]') }}
+    timeout-minutes: 135
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          clean: ${{ !(inputs.use_server || inputs.all_on_server) }}
+      - name: Clean self-hosted kernel workspace after checkout
+        if: inputs.use_server || inputs.all_on_server
+        run: git clean -ffdx && git reset --hard HEAD
+      - run: flock /tmp/oneplus13-apt-update.lock sudo apt-get update && flock /tmp/oneplus13-apt.lock sudo apt-get -o DPkg::Lock::Timeout=600 install -y build-essential bc bison flex libssl-dev libelf-dev ccache rsync device-tree-compiler cpio kmod zstd
+      - if: inputs.runtime_qemu
+        run: flock /tmp/oneplus13-apt.lock sudo apt-get -o DPkg::Lock::Timeout=600 install -y qemu-system-arm
+      - uses: actions/cache/restore@v4
+        if: ${{ !(inputs.use_server || inputs.all_on_server) }}
+        id: kernel-cache
+        with:
+          path: ~/.cache/ccache
+          key: oneplus13-source-${{ runner.arch }}-${{ hashFiles('devices/oneplus13/**') }}
+          restore-keys: |
+            oneplus13-source-${{ runner.arch }}-
+            oneplus13-v1-${{ runner.os }}-${{ runner.arch }}-
+      - run: python3 -m unittest discover -s tests -p 'test_oneplus13*.py' -v
+      - run: bash tools/oneplus13/source-image.sh kernel
+        env:
+          CCACHE_MAXSIZE: 3G
+          ONEPLUS13_BUILD_JOBS: ${{ (inputs.use_server || inputs.all_on_server) && '4' || '' }}
+      - uses: actions/cache/save@v4
+        if: ${{ always() && !(inputs.use_server || inputs.all_on_server) && steps.kernel-cache.outputs.cache-hit != 'true' }}
+        with:
+          path: ~/.cache/ccache
+          key: ${{ steps.kernel-cache.outputs.cache-primary-key }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: source-kernel-${{ github.sha }}
+          path: out/oneplus13/
+          if-no-files-found: error
+          retention-days: 14
+  resources:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update && sudo apt-get install -y curl ca-certificates patch
+      - name: Restore verified repository build cache
+        run: >-
+          python3 tools/oneplus13/repo-cache.py restore
+          sources apt-lists resources-debs
+      - run: sudo bash tools/oneplus13/build-resources.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oneplus13-resources-${{ github.sha }}
+          path: out/oneplus13-resources/
+          if-no-files-found: error
+          retention-days: 14
+  rootfs:
+    needs: [resources]
+    env:
+      ONEPLUS13_DESKTOP_PROFILE: ${{ inputs.desktop_profile }}
+    runs-on: ${{ inputs.all_on_server && fromJSON('["self-hosted", "Linux", "ARM64", "oneplus13-arm64"]') || fromJSON('["ubuntu-24.04-arm"]') }}
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: flock /tmp/oneplus13-apt-update.lock sudo apt-get update && flock /tmp/oneplus13-apt.lock sudo apt-get -o DPkg::Lock::Timeout=600 install -y squashfs-tools zstd build-essential pkg-config libqmi-glib-dev libqrtr-glib-dev libmbim-glib-dev
+      - name: Restore verified repository build cache
+        run: >-
+          python3 tools/oneplus13/repo-cache.py restore
+          sources apt-lists rootfs-debs
+      - uses: actions/cache/restore@v4
+        id: deb-cache
+        with:
+          path: cache/oneplus13-rootfs-debs
+          key: oneplus13-gnome-debs-v1-${{ runner.arch }}-${{ hashFiles('devices/oneplus13/ubuntu.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            oneplus13-gnome-debs-v1-${{ runner.arch }}-${{ hashFiles('devices/oneplus13/ubuntu.json') }}-
+            oneplus13-gnome-debs-v1-${{ runner.arch }}-
+      - uses: actions/download-artifact@v4
+        with:
+          name: oneplus13-resources-${{ github.sha }}
+          path: out/oneplus13-resources/
+      - run: bash tools/oneplus13/source-image.sh rootfs
+      # Keep completed downloads even if the snapshot transport later fails.
+      - uses: actions/cache/save@v4
+        if: always() && steps.deb-cache.outputs.cache-hit != 'true'
+        with:
+          path: cache/oneplus13-rootfs-debs
+          key: ${{ steps.deb-cache.outputs.cache-primary-key }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rootfs-transport-${{ github.sha }}
+          path: |
+            out/oneplus13-rootfs-artifacts/apt-package-plan.txt
+            out/oneplus13-rootfs-artifacts/deb-prefetch.json
+          if-no-files-found: ignore
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-gnome-${{ github.sha }}
+          path: out/oneplus13-rootfs-artifacts/
+          compression-level: 0
+          retention-days: 14
+  mesa:
+    runs-on: ${{ (inputs.use_server || inputs.all_on_server) && fromJSON('["self-hosted", "Linux", "ARM64", "oneplus13-arm64"]') || fromJSON('["ubuntu-24.04-arm"]') }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          clean: ${{ !(inputs.use_server || inputs.all_on_server) }}
+      - name: Clean self-hosted Mesa workspace after checkout
+        if: inputs.use_server || inputs.all_on_server
+        run: git clean -ffdx && git reset --hard HEAD
+      - run: |
+          flock /tmp/oneplus13-apt-update.lock sudo apt-get update
+          flock /tmp/oneplus13-apt.lock sudo apt-get -o DPkg::Lock::Timeout=600 install -y --no-install-recommends build-essential meson ninja-build pkg-config libdrm-dev libexpat1-dev python3-mako python3-ply python3-yaml bison flex zlib1g-dev libzstd-dev libelf-dev libwayland-dev libwayland-egl-backend-dev wayland-protocols libx11-dev libx11-xcb-dev libxcb-dri2-0-dev libxcb-dri3-dev libxcb-present-dev libxcb-randr0-dev libxcb-sync-dev libxcb-xfixes0-dev libxcb-glx0-dev libxcb-shm0-dev libxshmfence-dev libxxf86vm-dev libxrandr-dev libglvnd-dev glslang-tools python3-packaging python3-pip libvulkan-dev vulkan-tools
+          sudo --preserve-env=http_proxy,https_proxy,HTTP_PROXY,HTTPS_PROXY pip3 install --break-system-packages 'meson==1.9.1'
+      - run: bash tools/oneplus13/source-image.sh mesa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-mesa-${{ github.sha }}
+          path: out/mesa-debs/
+          retention-days: 14
+  image:
+    needs: [kernel, rootfs, mesa, ssc]
+    runs-on: ${{ inputs.all_on_server && fromJSON('["self-hosted", "Linux", "ARM64", "oneplus13-arm64"]') || fromJSON('["ubuntu-24.04-arm"]') }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          clean: ${{ !inputs.all_on_server }}
+      - name: Clean self-hosted image workspace after checkout
+        if: inputs.all_on_server
+        run: git clean -ffdx && git reset --hard HEAD
+      - run: flock /tmp/oneplus13-apt-update.lock sudo apt-get update && flock /tmp/oneplus13-apt.lock sudo apt-get -o DPkg::Lock::Timeout=600 install -y squashfs-tools alsa-utils m4 gcc
+      - if: inputs.runtime_qemu
+        run: flock /tmp/oneplus13-apt.lock sudo apt-get -o DPkg::Lock::Timeout=600 install -y qemu-system-arm
+      # Only same-workflow, same-commit build products are downloaded here.
+      - uses: actions/download-artifact@v4
+        with:
+          name: source-kernel-${{ github.sha }}
+          path: out/oneplus13
+      - uses: actions/download-artifact@v4
+        with:
+          name: source-gnome-${{ github.sha }}
+          path: out/oneplus13-rootfs-artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: source-mesa-${{ github.sha }}
+          path: out/mesa-debs
+      - uses: actions/download-artifact@v4
+        with:
+          name: oneplus13-phone-ssc-${{ github.sha }}
+          path: out/phone-ssc
+      - run: bash tools/oneplus13/source-image.sh assemble
+      - run: bash tools/oneplus13/source-image.sh complete
+      - name: Build clean persistent installation bundle
+        if: inputs.desktop_profile == 'full'
+        run: sudo python3 tools/oneplus13/build-persistent-bundle.py
+      - uses: actions/upload-artifact@v4
+        if: inputs.desktop_profile == 'full'
+        with:
+          name: oneplus13-persistent-${{ github.sha }}
+          path: out/oneplus13-persistent/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: complete-ram-image-${{ github.sha }}
+          path: out/oneplus13-complete-image/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: source-image-${{ github.sha }}
+          path: |
+            out/oneplus13-source-image/
+            out/oneplus13-source-desktop/
+          compression-level: 0
+          retention-days: 14

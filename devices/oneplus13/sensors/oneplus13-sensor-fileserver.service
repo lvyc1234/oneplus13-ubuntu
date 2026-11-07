@@ -1,0 +1,39 @@
+[Unit]
+Description=OnePlus 13 SSC reverse file service
+Requires=oneplus13-sensor-setup.service
+After=oneplus13-sensor-setup.service systemd-udevd.service
+ConditionKernelCommandLine=oneplus13.desktop=1
+ConditionPathExists=/run/oneplus13/ram-session
+ConditionPathExists=/dev/fastrpc-adsp-secure
+StartLimitIntervalSec=30
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=65534
+Group=65534
+ExecStart=/usr/lib/erhai/sensors/bin/hexagonrpcd -f /dev/fastrpc-adsp-secure -d adsp -s -W -R /usr/share/erhai-sensors/hexagonrpcd
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=12s
+KillMode=control-group
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_QIPCRTR
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+DevicePolicy=closed
+DeviceAllow=/dev/fastrpc-adsp-secure rw
+ReadWritePaths=/var/lib/erhai/sensors /usr/share/erhai-sensors /run
+MemoryMax=192M
+TasksMax=32

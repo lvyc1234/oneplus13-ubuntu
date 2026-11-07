@@ -1,0 +1,128 @@
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_core_perf.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_core_perf.c
+@@ -11,6 +11,7 @@
+ #include <linux/sort.h>
+ #include <linux/clk.h>
+ #include <linux/bitmap.h>
++#include <linux/overflow.h>
+ 
+ #include "dpu_kms.h"
+ #include "dpu_trace.h"
+@@ -165,6 +166,54 @@
+ 	}
+ }
+ 
++/* Fixed AA569 command120Hz only. The stock MDP budget is6800us, not the
++ * full8333us frame interval: 1e6/(6800*120) ==125/102. Scale existing
++ * conservative plane/prefill votes with ceiling rounding. This is a resource
++ * budget, not a hardware timer or an exact replica of proprietary HAL votes.
++ */
++static int dpu_aa569_spr_scale(u64 input, u64 *output)
++{
++	u64 product;
++	u32 remainder;
++
++	if (check_mul_overflow(input, 125ULL, &product))
++		return -EOVERFLOW;
++	*output = div_u64_rem(product, 102, &remainder);
++	*output += remainder != 0;
++	return 0;
++}
++
++static int dpu_aa569_spr_budget(struct dpu_core_perf_params *perf, u64 max_clock)
++{
++	struct dpu_core_perf_params next = *perf;
++	u64 peak, minimum_peak;
++	u32 remainder;
++	int ret;
++
++	if (!max_clock)
++		return -EINVAL;
++	ret = dpu_aa569_spr_scale(perf->bw_ctl, &next.bw_ctl);
++	if (ret)
++		return ret;
++	ret = dpu_aa569_spr_scale(perf->core_clk_rate, &next.core_clk_rate);
++	if (ret)
++		return ret;
++	ret = dpu_aa569_spr_scale(perf->max_per_pipe_ib, &peak);
++	if (ret)
++		return ret;
++	/* Each path's peak covers even the aggregate average. Intentionally
++	 * conservative until physical bandwidth/frame completion is measured.
++	 */
++	minimum_peak = div_u64_rem(next.bw_ctl, 1000, &remainder);
++	minimum_peak += remainder != 0;
++	peak = max(peak, minimum_peak);
++	if (peak > U32_MAX || next.core_clk_rate > max_clock)
++		return -E2BIG;
++	next.max_per_pipe_ib = peak;
++	*perf = next;
++	return 0;
++}
++
+ /**
+  * dpu_core_perf_crtc_check - validate performance of the given crtc state
+  * @crtc: Pointer to crtc
+@@ -178,6 +227,7 @@
+ 	struct dpu_crtc_state *dpu_cstate;
+ 	struct dpu_kms *kms;
+ 	struct dpu_core_perf_params perf = { 0 };
++	int ret;
+ 
+ 	if (!crtc || !state) {
+ 		DPU_ERROR("invalid crtc\n");
+@@ -194,6 +244,18 @@
+ 
+ 	/* obtain new values */
+ 	_dpu_core_perf_calc_crtc(&kms->perf, crtc, state, &dpu_cstate->new_perf);
++	if (kms->aa569_spr && state->enable) {
++		if (kms->perf.perf_tune.mode != DPU_PERF_MODE_NORMAL)
++			return -EINVAL;
++		ret = dpu_aa569_spr_budget(&dpu_cstate->new_perf,
++					 kms->perf.max_opp_clk_rate);
++		if (ret)
++			return ret;
++		if (!kms->perf.perf_cfg->max_bw_high ||
++		    DIV_ROUND_UP_ULL(dpu_cstate->new_perf.bw_ctl, 1000) >
++		    kms->perf.perf_cfg->max_bw_high)
++			return -E2BIG;
++	}
+ 
+ 	dpu_core_perf_aggregate(crtc->dev, dpu_crtc_get_client_type(crtc), &perf);
+ 
+@@ -226,7 +288,9 @@
+ 	u32 peak_bw;
+ 
+ 	if (!kms->num_paths)
+-		return 0;
++		return kms->aa569_spr ? -ENODEV : 0;
++	if (kms->aa569_spr && kms->perf.perf_tune.mode != DPU_PERF_MODE_NORMAL)
++		return -EINVAL;
+ 
+ 	if (kms->perf.perf_tune.mode == DPU_PERF_MODE_MINIMUM) {
+ 		avg_bw = 0;
+@@ -241,12 +305,18 @@
+ 		peak_bw = perf.max_per_pipe_ib;
+ 	}
+ 
+-	avg_bw /= kms->num_paths;
+-
+-	for (i = 0; i < kms->num_paths; i++)
+-		icc_set_bw(kms->path[i], avg_bw, peak_bw);
+-
+-	return ret;
++	if (kms->aa569_spr)
++		avg_bw = DIV_ROUND_UP_ULL(perf.bw_ctl, 1000ULL * kms->num_paths);
++	else
++		avg_bw /= kms->num_paths;
++
++	for (i = 0; i < kms->num_paths; i++) {
++		ret = icc_set_bw(kms->path[i], avg_bw, peak_bw);
++		if (ret && kms->aa569_spr)
++			return ret;
++	}
++
++	return 0;
+ }
+ 
+ /**

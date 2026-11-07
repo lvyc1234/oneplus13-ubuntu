@@ -1,0 +1,363 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH] phone libssc: add one-way metadata-only discovery guard
+
+Reuse the original libssc discovery and attribute constructors, without opening
+measurement streams. The phone probe locks a process-wide policy before creating
+clients. The actual send boundary only admits bounded SUID queries for registry,
+accel, ambient_light, gyro and mag, or one-shot attribute reads; both reject
+update subscriptions, malformed payloads and unknown fields. All measurement,
+disable and other request IDs are refused before packing/sending QMI data.
+
+The lock cannot be disabled through its API. Ordinary original-library behavior
+is unchanged until that explicit lock. The dedicated probe is a separate artifact
+and uses an internal discovery deadline; a hard process/service bound is still
+required around the original synchronous release/close callbacks.
+
+Tests exercise actual protobuf decoding and the real send path with a QMI stub
+that aborts if an unreviewed request reaches it. Original delivery encoding tests
+remain. This is offline source work, not sensor sample/hardware acceptance.
+
+--- a/src/libssc-client.c
++++ b/src/libssc-client.c
+@@ -17,6 +17,7 @@
+  */
+ 
+ #include "libssc-client-private.h"
++#include "libssc-phone-probe-private.h"
+ 
+ enum {
+ 	SIGNAL_REPORT,
+@@ -319,6 +320,12 @@
+ 
+ 	task = g_task_new (self, cancellable, callback, user_data);
+ 	priv = ssc_client_get_instance_private (self);
++	if (!ssc_phone_request_allowed (uid_high, uid_low, message_id, protobuf)) {
++		g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++					"Phone metadata-only policy refused this SSC request");
++		g_object_unref (task);
++		return;
++	}
+ 	buf = ssc_client_pack_request (delivery, uid_high, uid_low, message_id, protobuf);
+ 
+ 	if (buf == NULL) {
+--- a/libssc.map
++++ b/libssc.map
+@@ -1,5 +1,7 @@
+ LIBSSC_0.4.0 {
+ 	global:
++		ssc_phone_lock_metadata_only;
++		ssc_phone_metadata_only_locked;
+ 		ssc_sensor_accelerometer_new;
+ 		ssc_sensor_accelerometer_new_finish;
+ 		ssc_sensor_accelerometer_new_sync;
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -27,6 +27,7 @@
+ )
+ 
+ headers += files(
++	'libssc-phone-probe.h',
+   'libssc.h',
+   'libssc-sensor.h',
+   'libssc-sensor-proximity.h',
+@@ -43,6 +44,7 @@
+ )
+ 
+ sources += files(
++	'libssc-phone-probe.c',
+   'libssc-common.c',
+   'libssc-client.c',
+   'libssc-sensor.c',
+@@ -81,6 +83,10 @@
+   install: true,
+ )
+ 
++phone_probe = executable('phone-ssc-metadata-probe',
++  'phone-ssc-metadata-probe.c', include_directories: includes,
++  dependencies: deps, link_with: libssc, install: false)
++
+ ns = 'SSC'
+ 
+ pkg.generate(
+--- a/tests/meson.build
++++ b/tests/meson.build
+@@ -95,6 +95,16 @@
+ endif
+ 
+ # Request encoding only; runs without the mock SSC server.
++add_test_setup('phoneoffline', timeout_multiplier: 1)
++test('phone-probe-policy',
++  executable('phone-probe-policy','phone-probe-policy.c',sources,
++    include_directories: includes, dependencies: deps),
++  suite: 'phone-probe', timeout: 10)
++test('phone-probe-send-guard',
++  executable('phone-probe-send-guard','phone-probe-send-guard.c',sources,
++    include_directories: includes, dependencies: deps),
++  suite: 'phone-probe', timeout: 10)
++
+ test(
+   'tests-delivery',
+   executable('tests-delivery', 'delivery.c', sources, dependencies: deps),
+--- /dev/null
++++ b/src/libssc-phone-probe.h
+@@ -0,0 +1,10 @@
++/* SPDX-License-Identifier: GPL-3.0-or-later */
++#ifndef LIBSSC_PHONE_PROBE_H
++#define LIBSSC_PHONE_PROBE_H
++#include <glib.h>
++G_BEGIN_DECLS
++/* A one-way process restriction. It cannot be disabled through this API. */
++void ssc_phone_lock_metadata_only(void);
++gboolean ssc_phone_metadata_only_locked(void);
++G_END_DECLS
++#endif
+--- /dev/null
++++ b/src/libssc-phone-probe-private.h
+@@ -0,0 +1,7 @@
++/* SPDX-License-Identifier: GPL-3.0-or-later */
++#ifndef LIBSSC_PHONE_PROBE_PRIVATE_H
++#define LIBSSC_PHONE_PROBE_PRIVATE_H
++#include "libssc-phone-probe.h"
++gboolean ssc_phone_metadata_policy(guint64 high,guint64 low,guint32 id,const GArray *payload);
++gboolean ssc_phone_request_allowed(guint64 high,guint64 low,guint32 id,const GArray *payload);
++#endif
+--- /dev/null
++++ b/src/libssc-phone-probe.c
+@@ -0,0 +1,41 @@
++/* SPDX-License-Identifier: GPL-3.0-or-later */
++/* Phone discovery guard: no measurement/enable/disable/report subscription. */
++#include "libssc-phone-probe-private.h"
++#include "libssc-client-private.h"
++#include "ssc-sensor-suid.pb-c.h"
++#include "ssc-common.pb-c.h"
++static gint metadata_only;
++void ssc_phone_lock_metadata_only(void) { g_atomic_int_set(&metadata_only,1); }
++gboolean ssc_phone_metadata_only_locked(void) { return g_atomic_int_get(&metadata_only)!=0; }
++gboolean ssc_phone_metadata_policy(guint64 high,guint64 low,guint32 id,const GArray *payload)
++{
++    gboolean accepted=FALSE;
++    if(!payload || g_array_get_element_size((GArray*)payload)!=1 || !payload->data || payload->len==0 || payload->len>1024) return FALSE;
++    if(id==SSC_MSG_REQUEST_SUID) {
++        static const char *const names[]={"registry","accel","ambient_light","gyro","mag"};
++        SscSuidRequest *msg;
++        if(high!=SSC_SENSOR_UID_SUID_HIGH || low!=SSC_SENSOR_UID_SUID_LOW) return FALSE;
++        msg=ssc_suid_request__unpack(NULL,payload->len,(const uint8_t*)payload->data);
++        if(!msg) return FALSE;
++        if(msg->base.n_unknown_fields==0 && msg->has_enable_updates && !msg->enable_updates &&
++           msg->has_only_default_values && msg->data_type &&
++           (msg->only_default_values ||
++            (!msg->only_default_values && g_str_equal(msg->data_type,"ambient_light")))) {
++            for(gsize i=0;i<G_N_ELEMENTS(names);i++)
++                if(g_str_equal(msg->data_type,names[i])) accepted=TRUE;
++        }
++        ssc_suid_request__free_unpacked(msg,NULL);
++    } else if(id==SSC_MSG_REQUEST_GET_ATTRIBUTES) {
++        SscAttrRequest *msg;
++        if((high==0 && low==0) || (high==SSC_SENSOR_UID_SUID_HIGH && low==SSC_SENSOR_UID_SUID_LOW)) return FALSE;
++        msg=ssc_attr_request__unpack(NULL,payload->len,(const uint8_t*)payload->data);
++        if(!msg) return FALSE;
++        accepted=msg->base.n_unknown_fields==0 && msg->has_enable_updates && !msg->enable_updates;
++        ssc_attr_request__free_unpacked(msg,NULL);
++    }
++    return accepted;
++}
++gboolean ssc_phone_request_allowed(guint64 high,guint64 low,guint32 id,const GArray *payload)
++{
++    return !ssc_phone_metadata_only_locked() || ssc_phone_metadata_policy(high,low,id,payload);
++}
+--- /dev/null
++++ b/src/phone-ssc-metadata-probe.c
+@@ -0,0 +1,81 @@
++/* SPDX-License-Identifier: GPL-3.0-or-later */
++/* Uses original libssc discovery/attribute constructors, never sensor_open. */
++#include <glib.h>
++#include <gio/gio.h>
++#include <stdio.h>
++#include "libssc-sensor.h"
++#include "libssc-client-private.h"
++#include "libssc-phone-probe.h"
++typedef struct { const char *type; SSCSensor *sensor; gboolean done,available; const char *error_kind; } Probe;
++static Probe probes[]={{.type="accel"},{.type="ambient_light"},{.type="gyro"},{.type="mag"}};
++static GMainLoop *loop;
++static GCancellable *cancel;
++static gboolean timed_out;
++static guint completed;
++static const char *error_kind(const GError *error)
++{
++    const char *domain;
++    if(!error) return "none";
++    domain=g_quark_to_string(error->domain);
++    if(domain && g_str_equal(domain,"ssc-client") && error->code==SSC_CLIENT_ERROR_LOOKUP) return "ssc_service_lookup";
++    if(g_error_matches(error,ssc_sensor_error_quark(),SSC_SENSOR_ERROR_NO_SERVICE)) return "sensor_service_unavailable";
++    if(g_error_matches(error,G_IO_ERROR,G_IO_ERROR_PERMISSION_DENIED)) return "metadata_policy_refused";
++    if(g_error_matches(error,G_IO_ERROR,G_IO_ERROR_CANCELLED)) return "cancelled";
++    if(domain && g_str_equal(domain,"g-io-error-quark")) return "g_io_error";
++    if(domain && g_str_equal(domain,"qmi-error")) return "qmi_error";
++    if(domain && g_str_equal(domain,"qmi-protocol-error")) return "qmi_protocol_error";
++    if(domain && g_str_equal(domain,"ssc-client")) return "ssc_client_other";
++    if(domain && g_str_equal(domain,"ssc-sensor")) return "ssc_sensor_other";
++    return "unlisted_error_domain";
++}
++static void ready(GObject *source,GAsyncResult *result,gpointer data)
++{
++    Probe *probe=data;
++    GError *error=NULL;
++    (void)source;
++    probe->sensor=ssc_sensor_new_finish(result,&error);
++    if(probe->sensor) g_object_get(probe->sensor,SSC_SENSOR_AVAILABLE,&probe->available,NULL);
++    probe->error_kind=error_kind(error);
++    g_clear_error(&error);probe->done=TRUE;completed++;
++    if(completed==G_N_ELEMENTS(probes)) g_main_loop_quit(loop);
++}
++static gboolean deadline(gpointer data)
++{
++    (void)data;timed_out=TRUE;g_cancellable_cancel(cancel);g_main_loop_quit(loop);
++    return G_SOURCE_REMOVE;
++}
++int main(int argc,char **argv)
++{
++    gboolean verify_lock=FALSE;
++    GError *error=NULL;
++    GOptionEntry options[]={{"verify-lock",0,0,G_OPTION_ARG_NONE,&verify_lock,"Verify the one-way policy without QRTR access",NULL},{NULL}};
++    GOptionContext *options_ctx=g_option_context_new("- metadata-only SSC discovery; no samples");
++    g_option_context_add_main_entries(options_ctx,options,NULL);
++    if(!g_option_context_parse(options_ctx,&argc,&argv,&error)) { g_clear_error(&error);return 2; }
++    g_option_context_free(options_ctx);
++    if(argc!=1) return 2;
++    ssc_phone_lock_metadata_only();
++    if(!ssc_phone_metadata_only_locked()) return 3;
++    if(verify_lock) { puts("SSC_PHONE_METADATA_LOCK_VERIFIED_NO_QRTR");return 0; }
++    loop=g_main_loop_new(NULL,FALSE);cancel=g_cancellable_new();
++    guint timer=g_timeout_add_seconds(8,deadline,NULL);
++    for(gsize i=0;i<G_N_ELEMENTS(probes);i++) ssc_sensor_new((gchar*)probes[i].type,cancel,ready,&probes[i]);
++    g_main_loop_run(loop);
++    if(!timed_out) g_source_remove(timer);
++    gboolean all=completed==G_N_ELEMENTS(probes) && !timed_out;
++    if(timed_out) puts("SSC_PHONE_METADATA_DIAGNOSTIC type=all reason=discovery_timeout");
++    for(gsize i=0;i<G_N_ELEMENTS(probes);i++) {
++        if(probes[i].error_kind && !g_str_equal(probes[i].error_kind,"none"))
++            printf("SSC_PHONE_METADATA_DIAGNOSTIC type=%s reason=%s\n",probes[i].type,probes[i].error_kind);
++        printf("SSC_PHONE_METADATA type=%s available=%s completed=%s\n",probes[i].type,
++               probes[i].available?"yes":"no",probes[i].done?"yes":"no");
++        all=all && probes[i].available;
++    }
++    fflush(stdout);
++    /* The service wrapper must also enforce a hard wall clock during the
++     * original libssc QMI release/close callbacks. No ADSP restart is used. */
++    for(gsize i=0;i<G_N_ELEMENTS(probes);i++) g_clear_object(&probes[i].sensor);
++    g_clear_object(&cancel);g_main_loop_unref(loop);
++    printf("SSC_PHONE_METADATA_RESULT complete=%s samples_requested=no cleanup_returned=yes\n",all?"yes":"no");
++    return all?0:1;
++}
+--- /dev/null
++++ b/tests/phone-probe-policy.c
+@@ -0,0 +1,73 @@
++/* SPDX-License-Identifier: GPL-3.0-or-later */
++#include "libssc-client-private.h"
++#include "libssc-phone-probe-private.h"
++#include "ssc-sensor-suid.pb-c.h"
++static GArray *suid(const char *name,gboolean updates)
++{
++    SscSuidRequest msg;ssc_suid_request__init(&msg);
++    msg.data_type=(char*)name;msg.has_enable_updates=TRUE;msg.enable_updates=updates;
++    msg.has_only_default_values=TRUE;msg.only_default_values=TRUE;
++    GArray *buf=g_array_new(FALSE,FALSE,1);
++    g_array_set_size(buf,ssc_suid_request__get_packed_size(&msg));
++    ssc_suid_request__pack(&msg,(uint8_t*)buf->data);return buf;
++}
++static gboolean allowed(GArray *buf)
++{
++    return ssc_phone_metadata_policy(SSC_SENSOR_UID_SUID_HIGH,SSC_SENSOR_UID_SUID_LOW,SSC_MSG_REQUEST_SUID,buf);
++}
++static void defaults(void)
++{
++    g_assert_false(ssc_phone_metadata_only_locked());
++    g_assert_true(ssc_phone_request_allowed(1,2,513,NULL));
++}
++static void known_queries(void)
++{
++    const char *names[]={"registry","accel","ambient_light","gyro","mag"};
++    for(gsize i=0;i<G_N_ELEMENTS(names);i++) { GArray *buf=suid(names[i],FALSE);g_assert_true(allowed(buf));g_array_unref(buf); }
++}
++static void deny_subscriptions(void)
++{
++    GArray *buf=suid("accel",TRUE);g_assert_false(allowed(buf));g_array_unref(buf);
++    buf=suid("camera",FALSE);g_assert_false(allowed(buf));
++    g_assert_false(ssc_phone_metadata_policy(1,2,SSC_MSG_REQUEST_SUID,buf));g_array_unref(buf);
++    buf=suid("accel",FALSE);
++    for(guint32 id=513;id<=514;id++) g_assert_false(ssc_phone_metadata_policy(1,2,id,buf));
++    g_assert_false(ssc_phone_metadata_policy(1,2,10,buf));g_array_unref(buf);
++}
++static void attributes(void)
++{
++    SscAttrRequest msg;ssc_attr_request__init(&msg);
++    msg.has_enable_updates=TRUE;msg.enable_updates=FALSE;
++    GArray *buf=g_array_new(FALSE,FALSE,1);g_array_set_size(buf,ssc_attr_request__get_packed_size(&msg));
++    ssc_attr_request__pack(&msg,(uint8_t*)buf->data);
++    g_assert_true(ssc_phone_metadata_policy(1,2,1,buf));
++    g_assert_false(ssc_phone_metadata_policy(0,0,1,buf));
++    g_assert_false(ssc_phone_metadata_policy(SSC_SENSOR_UID_SUID_HIGH,SSC_SENSOR_UID_SUID_LOW,1,buf));
++    msg.enable_updates=TRUE;ssc_attr_request__pack(&msg,(uint8_t*)buf->data);
++    g_assert_false(ssc_phone_metadata_policy(1,2,1,buf));g_array_unref(buf);
++}
++static void malformed(void)
++{
++    GArray *buf=g_array_new(FALSE,FALSE,1);
++    g_assert_false(allowed(NULL));g_assert_false(allowed(buf));
++    g_array_set_size(buf,1025);g_assert_false(allowed(buf));g_array_unref(buf);
++    buf=suid("accel",FALSE);g_array_set_size(buf,1);g_assert_false(allowed(buf));g_array_unref(buf);
++    buf=suid("accel",FALSE);const unsigned char extra[]={0xf8,0x7f,0x01};g_array_append_vals(buf,extra,sizeof(extra));
++    g_assert_false(allowed(buf));g_array_unref(buf);
++}
++static void lock_once(void)
++{
++    ssc_phone_lock_metadata_only();g_assert_true(ssc_phone_metadata_only_locked());
++    ssc_phone_lock_metadata_only();g_assert_false(ssc_phone_request_allowed(1,2,513,NULL));
++}
++int main(int argc,char **argv)
++{
++    g_test_init(&argc,&argv,NULL);
++    g_test_add_func("/phone/01-default-unchanged",defaults);
++    g_test_add_func("/phone/02-queries",known_queries);
++    g_test_add_func("/phone/03-no-subscription",deny_subscriptions);
++    g_test_add_func("/phone/04-attributes",attributes);
++    g_test_add_func("/phone/05-malformed",malformed);
++    g_test_add_func("/phone/06-one-way-lock",lock_once);
++    return g_test_run();
++}
+--- /dev/null
++++ b/tests/phone-probe-send-guard.c
+@@ -0,0 +1,32 @@
++/* SPDX-License-Identifier: GPL-3.0-or-later */
++#include "libssc-client-private.h"
++#include "libssc-phone-probe-private.h"
++static gboolean finished;
++static guint qmi_calls;
++void qmi_client_ssc_control(QmiClientSsc *self,QmiMessageSscControlInput *input,guint timeout,
++                            GCancellable *cancellable,GAsyncReadyCallback callback,gpointer user_data)
++{
++    (void)self;(void)input;(void)timeout;(void)cancellable;(void)callback;(void)user_data;
++    qmi_calls++;g_error("Metadata guard allowed an unreviewed request to reach QMI");
++}
++static void complete(GObject *source,GAsyncResult *result,gpointer data)
++{
++    GError *error=NULL;(void)data;
++    g_assert_false(ssc_client_send_finish(SSC_CLIENT(source),result,&error));
++    g_assert_error(error,G_IO_ERROR,G_IO_ERROR_PERMISSION_DENIED);
++    g_clear_error(&error);finished=TRUE;
++}
++int main(void)
++{
++    SSCClient *client=g_object_new(SSC_TYPE_CLIENT,NULL);
++    ssc_phone_lock_metadata_only();
++    const guint32 ids[]={513,514,10,0,999,512,1};
++    for(gsize i=0;i<G_N_ELEMENTS(ids);i++) {
++        finished=FALSE;
++        ssc_client_send(client,1,2,ids[i],NULL,NULL,complete,NULL);
++        while(!finished) g_main_context_iteration(NULL,TRUE);
++    }
++    g_assert_cmpuint(qmi_calls,==,0);g_object_unref(client);
++    g_print("PHONE_METADATA_SEND_GUARD_BLOCKED_ALL_UNREVIEWED_REQUESTS_BEFORE_QMI\n");
++    return 0;
++}
+

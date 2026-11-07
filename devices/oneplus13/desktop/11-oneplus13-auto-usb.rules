@@ -1,0 +1,3 @@
+# RAM tests retain block-level readonly protection. Expose only real external
+# USB storage to the ordinary desktop volume monitor in automatic OTG mode.
+ACTION=="add|change", SUBSYSTEM=="block", SUBSYSTEMS=="usb", TEST=="/run/oneplus13-auto-otg/desktop-mode", ENV{UDISKS_IGNORE}="0", ENV{UDISKS_AUTO}="1", ENV{UDISKS_SYSTEM}="0"

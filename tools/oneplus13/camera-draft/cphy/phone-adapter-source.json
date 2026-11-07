@@ -1,0 +1,31 @@
+{
+  "scope": "EXPERIMENTAL_PHONE_CPHY_SOURCE_ONLY_NO_BOARD_ENABLE",
+  "base_files": {
+    "drivers/phy/qualcomm/phy-qcom-mipi-csi2-core.c": "b3dd10069fd92cf688ebcc1dbb2314da1347a6765f11809cd8775b6e31602a80",
+    "drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c": "bf1d45381941b915e354a6abf573c4db9750dca418b7c15a68a403c403180865",
+    "drivers/phy/qualcomm/phy-qcom-mipi-csi2.h": "023e6fe2145d2a93b57efffad9003a2ebf972015b99f940a102dc8abb60f097e"
+  },
+  "generated_files": {
+    "drivers/phy/qualcomm/phy-qcom-mipi-csi2-core.c": "70f8960fd07eb4ef99163b5e61a7961097e916575cc0ef7d4f86b71a5737bff4",
+    "drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c": "3702a82d6f6d5ad3866228576605f315709fc7c80a363f017ed86309139b6d44",
+    "drivers/phy/qualcomm/phy-qcom-mipi-csi2.h": "c65a9e5be77877e27c13f2c818607a76962d98d92379836b426c8a9582b962eb"
+  },
+  "input_files": {
+    "phone-adapter.patch": "25a9dda4bb56453b6ca5ced8c76325f768dc1a95300899c35c8c9e8f84e9b4cc",
+    "dodge-cphy-mmio.h": "51ed0374d76b08a530b85c4eeb7f7fec662b0c19bc5d030ed557e5e38ccaea8f",
+    "phone-sequence.h": "d36273502699af23bb44566bbf01dd2061bfb94c947f0521c932cff5994cb9c6",
+    "review-phone-tables.py": "4398ed42162bfcd253e278c806ccd51d495825c76c51456ede0c3e45cb11bee9"
+  },
+  "public_sequence_provenance": "phone-sequence-sources.json",
+  "compiled": false,
+  "tests_executed": false,
+  "hardware_qualified": false,
+  "normal_phone_kernel_changed": false,
+  "board_node_enabled": false,
+  "remaining": [
+    "supplier-specific sensor initialization and 19.2MHz C-PHY mode",
+    "exact regulator and CAMSS interconnect integration",
+    "CSID graph and real capture",
+    "IRQ behavior, clock votes and rollback validation"
+  ]
+}

@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0-only
+[Unit]
+ConditionKernelCommandLine=oneplus13.desktop=1
+ConditionPathExists=|/run/oneplus13/ram-session
+ConditionPathExists=|/run/oneplus13/persistent-session
+Description=OnePlus 13 binary panel power requests
+
+[Socket]
+ListenStream=/run/oneplus13-display-power/control
+SocketMode=0666
+DirectoryMode=0755
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

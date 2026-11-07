@@ -1,0 +1,91 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH] hexagonrpc: avoid undefined unaligned wire stores
+
+The existing misaligned output fixture trips UBSan at the uint32_t cast
+when a preceding blob length leaves the next wire-size field unaligned.
+Use a local little-endian word and memcpy, as the input decoder already
+does. Keep the byte-exact wire output and verify four destination base
+alignments with leading/trailing canaries.
+
+The ioctl test double also calls memcmp/memcpy with null pointers for a
+legitimate zero-length argument. Skip only those zero-byte test accesses,
+retaining every nonempty argument check. Do not disable UBSan or its
+alignment/null checks. This supplemental phone build leaves the shared
+original recipe unchanged.
+
+--- a/hexagonrpcd/iobuffer.c
++++ b/hexagonrpcd/iobuffer.c
+@@ -216,7 +216,8 @@
+ 	size_t i;
+ 
+ 	for (i = 0; i < n_outbufs; i++) {
+-		*(uint32_t *) ptr = htole32(outbufs[i].s);
++		uint32_t size = htole32(outbufs[i].s);
++		memcpy(ptr, &size, sizeof(size));
+ 		ptr = &ptr[4];
+ 		align = (align + 4) & 0x7;
+ 
+--- a/tests/test_hexagonrpc.c
++++ b/tests/test_hexagonrpc.c
+@@ -316,7 +316,7 @@
+ 			if (args[i].length != expected[i].len)
+ 				return -1;
+ 
+-			if (memcmp((void *) args[i].ptr,
++			if (args[i].length && memcmp((void *) args[i].ptr,
+ 				   expected[i].ptr,
+ 				   args[i].length))
+ 				return -1;
+@@ -329,9 +329,10 @@
+ 			if (args[i].length < expected[i].len)
+ 				return -1;
+ 
+-			memcpy((void *) args[i].ptr,
+-			       expected[i].ptr,
+-			       args[i].length);
++			if (args[i].length)
++				memcpy((void *) args[i].ptr,
++				       expected[i].ptr,
++				       args[i].length);
+ 		}
+ 
+ 		return 0;
+--- a/tests/test_iobuffer.c
++++ b/tests/test_iobuffer.c
+@@ -220,10 +220,36 @@
+ 	return 0;
+ }
+ 
++static int test_out_unaligned_base(void)
++{
++    size_t size = outbufs_calculate_size(8, misaligned_decoded);
++    unsigned char *base = malloc(size + 4);
++    size_t offset;
++    int result = 0;
++    if (!base)
++        return 1;
++    for (offset = 0; offset < 4; offset++) {
++        memset(base, 0xa5, size + 4);
++        outbufs_encode(8, misaligned_decoded, base + offset);
++        if (memcmp(base + offset, misaligned_iobufs, sizeof(misaligned_iobufs)))
++            result = 1;
++        if (offset && base[offset - 1] != 0xa5)
++            result = 1;
++        if (base[offset + size] != 0xa5)
++            result = 1;
++    }
++    free(base);
++    return result;
++}
++
+ int main(int argc, const char **argv)
+ {
+ 	int ret;
+ 
++	ret = test_out_unaligned_base();
++	if (ret)
++		return ret;
++
+ 	ret = test_in_empty();
+ 	if (ret)
+ 		return ret;

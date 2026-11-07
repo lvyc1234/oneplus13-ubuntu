@@ -1,0 +1,35 @@
+Subject: [PHONE OFFLINE FIX] media: camss: stop on PHY setup errors
+
+Prepared by Codex <codex@openai.com>.
+Preserve the original series. Remove its unused loop local and return
+failed timing or mode setup before configure/power-on. Actual extracted
+function fault controls cover each boundary; no hardware claim.
+
+diff --git a/drivers/media/platform/qcom/camss/camss-csiphy.c b/drivers/media/platform/qcom/camss/camss-csiphy.c
+--- a/drivers/media/platform/qcom/camss/camss-csiphy.c
++++ b/drivers/media/platform/qcom/camss/camss-csiphy.c
+@@ -332,7 +332,6 @@
+ 	struct device *dev = csiphy->camss->dev;
+ 	u8 num_lanes = lncfg->num_data;
+ 	s64 link_freq;
+-	int i;
+ 	int ret;
+ 
+ 	dphy_cfg = &dphy_opts.mipi_dphy;
+@@ -345,9 +344,13 @@
+ 		return -EINVAL;
+ 	}
+ 
+-	phy_mipi_dphy_get_default_config_for_hsclk(link_freq, num_lanes, dphy_cfg);
+-
+-	phy_set_mode(csiphy->phy, PHY_MODE_MIPI_DPHY);
++	ret = phy_mipi_dphy_get_default_config_for_hsclk(link_freq, num_lanes, dphy_cfg);
++	if (ret)
++		return ret;
++
++	ret = phy_set_mode(csiphy->phy, PHY_MODE_MIPI_DPHY);
++	if (ret)
++		return ret;
+ 
+ 	ret = phy_configure(csiphy->phy, &dphy_opts);
+ 	if (ret) {

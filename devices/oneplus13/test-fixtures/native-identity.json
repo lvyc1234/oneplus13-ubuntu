@@ -1,0 +1,15 @@
+[
+  {"name":"compiled_native", "model":"OnePlus 13 (AA569 native display experimental candidate)", "chassis":"handset", "compatible":["oneplus,dodge","qcom,sm8750"], "accept":true},
+  {"name":"observed_abl", "model":"Qualcomm Technologies, Inc. Sun MTP,dodge", "chassis":"handset", "compatible":["qcom,sun-mtp","qcom,sun","qcom,sunp-mtp","qcom,sunp","qcom,mtp"], "accept":true},
+  {"name":"generic_sun", "model":"Qualcomm Technologies, Inc. Sun MTP", "chassis":"handset", "compatible":["qcom,sun"], "accept":false},
+  {"name":"other_dodge", "model":"Qualcomm Technologies, Inc. Sun MTP,dodge-other", "chassis":"handset", "compatible":["qcom,sun"], "accept":false},
+  {"name":"pad", "model":"OnePlus Pad 2 Pro", "chassis":"tablet", "compatible":["qcom,sun"], "accept":false},
+  {"name":"13r", "model":"OnePlus 13R", "chassis":"handset", "compatible":["oneplus,dodge","qcom,sm8750"], "accept":false},
+  {"name":"diagnostic_not_native", "model":"OnePlus 13 (offline bring-up candidate)", "chassis":"handset", "compatible":["oneplus,dodge","qcom,sm8750"], "accept":false},
+  {"name":"wrong_chassis", "model":"Qualcomm Technologies, Inc. Sun MTP,dodge", "chassis":"tablet", "compatible":["qcom,sun"], "accept":false},
+  {"name":"wrong_soc", "model":"Qualcomm Technologies, Inc. Sun MTP,dodge", "chassis":"handset", "compatible":["qcom,other"], "accept":false},
+  {"name":"compiled_missing_soc", "model":"OnePlus 13 (AA569 native display experimental candidate)", "chassis":"handset", "compatible":["oneplus,dodge"], "accept":false},
+  {"name":"compiled_missing_board", "model":"OnePlus 13 (AA569 native display experimental candidate)", "chassis":"handset", "compatible":["qcom,sm8750"], "accept":false},
+  {"name":"missing_model", "model":null, "chassis":"handset", "compatible":["qcom,sun"], "accept":false},
+  {"name":"missing_chassis", "model":"Qualcomm Technologies, Inc. Sun MTP,dodge", "chassis":null, "compatible":["qcom,sun"], "accept":false}
+]

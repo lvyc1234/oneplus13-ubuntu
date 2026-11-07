@@ -1,0 +1,89 @@
+{
+  "scope": "GENERIC_OFFICIAL_OTA_FILES_NOT_PER_UNIT_CALIBRATION",
+  "model": "PJZ110",
+  "region": "CN",
+  "version": "PJZ110_16.0.10.501(CN01)",
+  "archive_size": 8975091784,
+  "archive_md5": "6bd2956979795c267a062462ad7fc50f",
+  "catalog_url": "https://roms.danielspringer.at/api/ota.php?model=PJZ110&region=CN",
+  "dumper": {
+    "repository": "https://github.com/xishang0128/payload-dumper-go.git",
+    "commit": "4cc6ef94039470d659e4199c67f76d8962280023",
+    "license": "GPL-3.0",
+    "go": "1.26.0"
+  },
+  "files": [
+    {
+      "partition": "vendor",
+      "member": "firmware/gen80000_aqe.fw",
+      "output": "graphics/gen80000_aqe.fw",
+      "owner_hash_observed": true,
+      "size": 25340,
+      "sha256": "f04cb97e1e629b9003a26c5670b8f7e5b7bfeca95d35b2abd581fd8672efed20"
+    },
+    {
+      "partition": "vendor",
+      "member": "firmware/gen80000_sqe.fw",
+      "output": "graphics/gen80000_sqe.fw",
+      "owner_hash_observed": true,
+      "size": 111892,
+      "sha256": "9c8f009bea112d7c06dd2ccb67e889999459e53b92f0f4859f5ea0db067ad6b5"
+    },
+    {
+      "partition": "vendor",
+      "member": "firmware/gen80000_gmu.bin",
+      "output": "graphics/gen80000_gmu.bin",
+      "owner_hash_observed": true,
+      "size": 88896,
+      "sha256": "1ad8175e6cd01ea76c64d20b83600038c52dd29844b48d57b11b769b038863a5"
+    },
+    {
+      "partition": "vendor",
+      "member": "firmware/gen80000_zap.mbn",
+      "output": "graphics/gen80000_zap.mbn",
+      "owner_hash_observed": true,
+      "size": 12088,
+      "sha256": "a694df58b82343e58e52745da31c3b88e569a2eeae5e7755e0d9bf14d93f5046"
+    },
+    {
+      "partition": "odm",
+      "member": "etc/wifi/peach/bdwlan.elf",
+      "output": "wlan/odm/bdwlan.elf",
+      "owner_hash_observed": true,
+      "size": 125328,
+      "sha256": "b95a047cda7ab3d23010f7cdc0dd031bc865fbf369191a55df6a44a574d4cccd"
+    },
+    {
+      "partition": "odm",
+      "member": "etc/wifi/peach/regdb.bin",
+      "output": "wlan/odm/regdb.bin",
+      "owner_hash_observed": true,
+      "size": 24278,
+      "sha256": "353df6eb96be7f4c8406f313020d2b52c55905908eacc056b880202801f4a429"
+    },
+    {
+      "partition": "modem",
+      "member": "::/image/peach/amss20.bin",
+      "output": "wlan/modem/amss20.bin",
+      "owner_hash_observed": true,
+      "size": 6840384,
+      "sha256": "f89a5348a4076d4db062eb335ac97b5fb028397bd3d21c96a837fb138503d84e"
+    },
+    {
+      "partition": "modem",
+      "member": "::/image/peach/aux_ucode20.elf",
+      "output": "wlan/modem/aux_ucode20.elf",
+      "owner_hash_observed": true,
+      "size": 61440,
+      "sha256": "5360d1b26c3b2458f3df30a0c690a17bc0f4b6952f36b805810061ff9be7995b"
+    },
+    {
+      "partition": "modem",
+      "member": "::/image/peach/phy_ucode20.elf",
+      "output": "wlan/modem/phy_ucode20.elf",
+      "owner_hash_observed": true,
+      "size": 290816,
+      "sha256": "fbe4ea920c38454b12d612f7c16e68a572a714aeca60d65c994abe1b516b24ba"
+    }
+  ]
+}

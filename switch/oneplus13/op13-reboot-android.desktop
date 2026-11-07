@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Restart into Android
+Name[zh_CN]=重启到 Android
+Comment=Select Android A and restart the phone
+Exec=pkexec /usr/local/sbin/op13-switch to-android
+Icon=system-reboot
+Terminal=false
+Categories=System;

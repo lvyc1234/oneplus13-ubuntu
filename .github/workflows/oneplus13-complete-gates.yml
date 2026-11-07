@@ -1,0 +1,42 @@
+name: OnePlus 13 complete feature offline gates
+on:
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  gates:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check asynchronous network and independent desktop acceptance
+        run: |
+          python3 -m unittest discover -s tests -p test_oneplus13_automatic_wifi.py -v
+          python3 -m unittest discover -s tests -p test_oneplus13_ram_desktop.py -v
+          python3 -m unittest discover -s tests -p test_oneplus13_ram_clock.py -v
+      - name: Check saved-input audio and sensor contracts
+        run: |
+          python3 -m unittest discover -s tests -p test_oneplus13_audio_topology.py -v
+          python3 -m unittest discover -s tests -p test_oneplus13_sensor_loader.py -v
+          python3 -m py_compile tools/oneplus13/review-feature-gaps.py tools/oneplus13/review-mi2s-reset.py tools/oneplus13/review-sensor-loader.py
+          mkdir -p out/complete-gates
+          printf 'OFFLINE_SYNTHETIC_GATES_ONLY\nNo private FDT, ROM, credentials or device access.\n' > out/complete-gates/SCOPE.txt
+      - name: Check bounded watchdog probes and key-order-independent receipts
+        run: |
+          python3 -m unittest discover -s tests -p test_oneplus13_watchdog_recovery.py -v
+          python3 -m unittest discover -s tests -p test_oneplus13_watchdog_receipt.py -v
+      - name: Check native video pixels, queue bounds and partial cleanup
+        run: python3 -m unittest discover -s tests -p test_oneplus13_video_runtime.py -v
+      - name: Prepare and check native multimedia framework without hardware decode
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends python3-gi gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 gstreamer1.0-plugins-base
+          python3 -m unittest discover -s tests -p test_oneplus13_gstreamer_frame.py -v
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oneplus13-complete-gates-${{ github.sha }}
+          path: out/complete-gates/
+          retention-days: 7

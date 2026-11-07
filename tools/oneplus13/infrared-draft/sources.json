@@ -1,0 +1,34 @@
+{
+  "scope": "EXPERIMENTAL_SPI_IR_SOURCE_ONLY_NO_BOARD_ENABLE",
+  "kernel_pin": "7a81d184e3098624d4342d8f4eff5e23674bcc9f",
+  "base_files": {
+    "Kconfig": "1ce33596c4c033c8a55b455693c9e034daf50fd7401c73566974263710351d3c",
+    "Makefile": "46a3743d95aaf71bdce0b2c1d1f4ab184a4ba6224b86567ad300e090c712f2a8"
+  },
+  "source_files": {
+    "ir-dodge-spi.c": "7a7277a480aa7415b9d335c8622521c8d37f7251d465e3f68fbb9b157b0465a5",
+    "dodge-ir-disabled.dtsi": "78c1bd77b7732d7665af1689431708d89f1c336c8a4851fdd0a820ad2bb0b32c"
+  },
+  "public_vendor_pin": "d50b305f7da9e14715a25120a4ac7b1a4b8b97c3",
+  "public_vendor_sources": [
+    {
+      "file": "oplus_ir_spi.c",
+      "sha256": "248dafc2bd316d1039403e65877393a83e8ca0b3a3776c3a284e3f96ebd4b9c9"
+    },
+    {
+      "file": "oplus_ir_core.c",
+      "sha256": "33ebd71364431165be57e9bae9489c5da3d21cd59926367dc948ebe7bb93aaa0"
+    },
+    {
+      "file": "oplus_ir_core.h",
+      "sha256": "7ffeb12603d0951f25f9ce77dc4601042be61d38f59c02fb927e28a36d265217"
+    }
+  ],
+  "compiled": false,
+  "tests_executed": false,
+  "hardware_qualified": false,
+  "normal_phone_kernel_changed": false,
+  "board_node_enabled": false,
+  "required_supply_microvolt": 3056000,
+  "existing_provider_max_microvolt": 3008000
+}

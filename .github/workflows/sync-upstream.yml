@@ -1,0 +1,22 @@
+name: Sync original Pad upstream
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: sync-pad-upstream
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: onepluspad-2pro-mainline
+          fetch-depth: 0
+      - name: Fast-forward the preserved upstream branch
+        run: |
+          git remote add upstream https://github.com/yzddmr6/onepluspad-2pro-mainline.git
+          git fetch upstream main
+          git merge --ff-only upstream/main
+          git push origin HEAD:refs/heads/onepluspad-2pro-mainline

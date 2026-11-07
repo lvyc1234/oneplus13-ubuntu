@@ -1,0 +1,171 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-2.0-only
+"""Explicit RAM-desktop native display preflight and one-shot module loading."""
+import argparse
+import hashlib
+import os
+from pathlib import Path
+import re
+import subprocess
+import struct
+import time
+import zlib
+
+PROFILE='usr/lib/firmware/qcom/sm8750/oneplus/dodge/aa569-spr-v1.bin'
+HELPER='run/oneplus13/native/start-native-display'
+MODULES=('panel_oneplus_aa569','msm')
+
+
+def regular(root,name,limit):
+    path=root/name
+    for parent in [path,*path.parents]:
+        if parent==root:break
+        if parent.is_symlink():raise ValueError('Native input traverses a symbolic link')
+    if not path.is_file():
+        raise ValueError('Native input missing or oversized')
+    # sysfs/configfs attributes may report PAGE_SIZE regardless of content.
+    with path.open('rb') as stream:data=stream.read(limit+1)
+    if len(data)>limit:raise ValueError('Native input missing or oversized')
+    return data
+
+
+def validate_payload(root,release):
+    root=Path(root)
+    if not re.fullmatch(r'[A-Za-z0-9._+\-]{1,160}',release):raise ValueError('Invalid kernel release')
+    if regular(root,'etc/oneplus13-native-candidate',161).decode()!=release+'\n':
+        raise ValueError('Wrong native candidate release')
+    if regular(root,'usr/lib/oneplus13-desktop/kernel-release',161).decode()!=release+'\n':
+        raise ValueError('Wrong rootfs module release')
+    marker=regular(root,'etc/oneplus13-native-handoff',512).decode().splitlines()
+    if len(marker)!=4 or marker[:2]!=['ONEPLUS13_NATIVE_HANDOFF_V1',release]:
+        raise ValueError('Wrong native manifest')
+    profile=regular(root,PROFILE,176)
+    helper=regular(root,HELPER,65536)
+    for value,data in zip(marker[2:],[profile,helper]):
+        if not re.fullmatch('[0-9a-f]{64}',value) or hashlib.sha256(data).hexdigest()!=value:
+            raise ValueError('Native payload hash mismatch')
+    if len(profile)!=176 or profile[:8]!=b'AA569S2\0':raise ValueError('Wrong SPR profile')
+    version,width,height,hz,words,crc,res1,res2=struct.unpack_from('<8I',profile,8)
+    if (version,width,height,hz,words,res1,res2)!=(1,1440,3168,120,34,0,0) or zlib.crc32(profile[40:])!=crc:
+        raise ValueError('Invalid SPR profile header or CRC')
+    # Kernel decoder remains authoritative for coefficient/field semantics.
+    base='sys/firmware/devicetree/base/'
+    model=regular(root,base+'model',256).rstrip(b'\0').decode()
+    chassis=regular(root,base+'chassis-type',32).rstrip(b'\0')
+    compat=regular(root,base+'compatible',1024).split(b'\0')
+    native=model=='OnePlus 13 (AA569 native display experimental candidate)' and b'oneplus,dodge' in compat and b'qcom,sm8750' in compat
+    abl=model=='Qualcomm Technologies, Inc. Sun MTP,dodge' and b'qcom,sun' in compat
+    if chassis!=b'handset' or not (native or abl):raise ValueError('Wrong native phone identity')
+    if any((root/'sys/module'/module).exists() for module in MODULES):
+        raise ValueError('Display module already loaded')
+
+
+def validate_files(root,release):
+    root=Path(root)
+    validate_payload(root,release)
+    if not (root/'run/oneplus13/ram-session').is_file():raise ValueError('Not a RAM desktop session')
+    cmdline=regular(root,'proc/cmdline',16384).decode().split()
+    if 'oneplus13.desktop=1' not in cmdline or 'oneplus13.desktop.qemu=1' in cmdline:
+        raise ValueError('Wrong desktop boot context')
+    # /proc/mounts intentionally points to self/mounts on Linux. This is a
+    # kernel pseudo-file, unlike the private payload paths checked above.
+    with (root/'proc/mounts').open('rb') as stream:mount_data=stream.read(1024*1024+1)
+    if len(mount_data)>1024*1024:raise ValueError('Mount evidence is oversized')
+    mounts=mount_data.decode().splitlines()
+    parsed=[line.split() for line in mounts]
+    if not any(len(row)>=4 and row[1]=='/' and row[2]=='overlay' for row in parsed):
+        raise ValueError('Root is not a RAM overlay')
+    for row in parsed:
+        if row and re.match(r'/dev/(?:sd|mmcblk|nvme|dm-|mapper/)',row[0]):
+            raise ValueError('Physical filesystem is mounted')
+    count=0
+    for disk in (root/'sys/class/block').iterdir():
+        if disk.name.startswith(('loop','ram','zram')):continue
+        ro=disk/'ro'
+        if not ro.is_file() or ro.read_text().strip()!='1':raise ValueError('Storage is not protected')
+        count+=1
+    if not count:raise ValueError('No physical storage evidence')
+    udc=regular(root,'sys/kernel/config/usb_gadget/oneplus13/UDC',256).decode().strip()
+    if not re.fullmatch('[a-zA-Z0-9_.:-]+',udc) or (root/'sys/class/udc'/udc/'state').read_text().strip()!='configured':
+        raise ValueError('The RAM diagnostic USB gadget is not configured')
+    return {'release':release,'physical_blocks_checked':count}
+
+
+def command(args):
+    return subprocess.check_output(args,text=True,timeout=10,stderr=subprocess.STDOUT).strip()
+
+
+def runtime_checks(release,run=command,now=time.monotonic):
+    for unit in ['oneplus13-ram-guard.service','oneplus13-ram-deadline.timer','oneplus13-ram-usb.service']:
+        if run(['/usr/bin/systemctl','is-active',unit])!='active':raise ValueError('RAM guard, deadline or USB service is inactive')
+    path='/org/freedesktop/systemd1/unit/oneplus13_2dram_2ddeadline_2etimer'
+    expiry=run(['/usr/bin/busctl','--system','get-property','org.freedesktop.systemd1',path,
+                'org.freedesktop.systemd1.Timer','NextElapseUSecMonotonic'])
+    match=re.fullmatch(r't ([0-9]+)',expiry)
+    if not match or not (now()+60)*1000000<int(match[1])<=900000000:
+        raise ValueError('Recovery deadline is missing, extended or too close')
+    check_module_policy(release,run)
+
+
+def check_module_policy(release,run=command):
+    policy=run(['/usr/sbin/modprobe','-c']).splitlines()
+    for module in MODULES:
+        if 'install '+module+' /bin/false' not in policy:raise ValueError('Ordinary display loading is not blocked')
+        vermagic=run(['/usr/sbin/modinfo','-k',release,'-F','vermagic',module])
+        if not vermagic.startswith(release+' '):raise ValueError('Module release mismatch')
+
+
+def load_modules(run=command):
+    # Only these two explicit entry points ignore their install rule. Global
+    # alias/dependency policy is retained. Never auto-retry a partially sent init.
+    for module in MODULES:
+        run(['/usr/sbin/modprobe','--ignore-install',module])
+
+
+def activate(root,release,run=command,now=time.monotonic):
+    root=Path(root)
+    def preflight():
+        validate_files(root,release)
+        runtime_checks(release,run=run,now=now)
+    activate_checked(root,preflight,run)
+
+
+def activate_checked(root,preflight,run):
+    if run is command and root!=Path('/'):
+        raise ValueError('Real module loading requires the actual root')
+    import fcntl
+    preflight()
+    lock=root/'run/oneplus13/native/activation.lock'
+    descriptor=os.open(lock,os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
+    with os.fdopen(descriptor,'a') as stream:
+        fcntl.flock(stream,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        attempted=lock.with_name('activation-attempted')
+        if attempted.exists():raise ValueError('Native activation already attempted; keep recovery armed')
+        # Check again under the lock, then retain the attempt marker even if a
+        # driver errors. Do not unload/retry or alter the recovery timer.
+        preflight()
+        with attempted.open('x'):pass
+        load_modules(run=run)
+
+
+def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    group=parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('--check',action='store_true')
+    group.add_argument('--activate',action='store_true')
+    args=parser.parse_args()
+    if os.geteuid()!=0:raise ValueError('Root is required for this RAM candidate')
+    release=os.uname().release
+    validate_files(Path('/'),release)
+    runtime_checks(release)
+    if args.check:
+        print('ONEPLUS13_NATIVE_PREFLIGHT_OK_NOT_ACTIVATED');return
+    activate(Path('/'),release)
+    print('ONEPLUS13_NATIVE_LOAD_RETURNED_PHYSICAL_DISPLAY_UNVERIFIED')
+
+
+if __name__=='__main__':
+    try:main()
+    except (ValueError,OSError,subprocess.SubprocessError) as error:
+        print('Native display preflight/activation failed; recovery remains armed: '+type(error).__name__)
+        raise SystemExit(1)

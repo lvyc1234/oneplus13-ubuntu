@@ -1,0 +1,116 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# Install a test observer only after the emulator's DT identity has been checked.
+set -eu
+tr '\000' '\n' < /sys/firmware/devicetree/base/compatible | grep -qx linux,dummy-virt
+[ "${1:-}" = /newroot ]
+cp /bin/oneplus13-native-handoff /newroot/run/oneplus13/native-handoff-lib
+cp /bin/oneplus13-native-handoff-selftest /newroot/run/oneplus13/native-handoff-selftest
+cp /bin/oneplus13-native-display-sha256 /newroot/run/oneplus13/native-display-sha256
+chmod 700 /newroot/run/oneplus13/native-handoff-selftest
+deadline=120
+case " $(cat /proc/cmdline) " in *' oneplus13.desktop.qemu-http=1 '*) deadline=180 ;; esac
+cat > /newroot/run/oneplus13/qemu-check <<'EOF'
+#!/bin/sh
+set -eu
+trap 'echo ONEPLUS13_QEMU_OBSERVER_EXIT; sleep 2; /usr/bin/busybox poweroff -f -n' EXIT
+echo ONEPLUS13_QEMU_SYSTEMD_CHECK_STARTED
+[ "$(cat /proc/1/comm)" = systemd ]
+[ "$(findmnt -n -o FSTYPE /)" = overlay ]
+[ "$(blockdev --getro /dev/vda)" = 1 ]
+[ "$(cat /usr/lib/oneplus13-desktop/kernel-release)" = "$(uname -r)" ]
+systemctl is-active oneplus13-ram-guard.service oneplus13-ram-deadline.timer NetworkManager.service dbus.service
+test -f /run/evidence/systemd-alive.txt
+awk -F: '$1 == "root" {if ($2 !~ /^[!*]/) exit 1; found=1} END {if (!found) exit 1}' /etc/shadow
+/usr/bin/gnome-shell --version
+systemctl show gdm3.service -p ActiveState -p SubState
+# Exercise the actual rootfs kmod and full indexes only in dummy-virt.
+# Missing modules must not masquerade as a loading-policy success.
+for module in panel_oneplus_aa569 msm; do
+    modinfo "$module" > /dev/null
+    modprobe -c | grep -qx "install $module /bin/false"
+    modprobe -n -v "$module" > /run/oneplus13/display-load-plan
+    grep -q '^install /bin/false' /run/oneplus13/display-load-plan
+    if modprobe "$module"; then
+        echo "Display policy unexpectedly allowed $module"; exit 1
+    fi
+    [ ! -d "/sys/module/$module" ]
+done
+modprobe -b 'of:NpanelT(null)Coneplus,dodge-aa569' || :
+modprobe -b 'of:Ndisplay-controllerT(null)Cqcom,sm8750-dpu' || :
+[ ! -d /sys/module/panel_oneplus_aa569 ]
+[ ! -d /sys/module/msm ]
+echo ONEPLUS13_DISPLAY_AUTOLOAD_BLOCKED
+[ "$(sha256sum /usr/libexec/oneplus13-native-display | cut -d' ' -f1)" = "$(cat /run/oneplus13/native-display-sha256)" ]
+# Exercise real systemd timer D-Bus and matching kmod reads. QEMU has no phone
+# gadget. Its USB-service response and monotonic observation point are fixtures;
+# the shortened 180s VM can reach this observer with <60s left under TCG.
+# Real late-deadline rejection is covered separately; production keeps 60s.
+/usr/bin/python3 - <<'PY'
+import runpy
+ns=runpy.run_path('/usr/libexec/oneplus13-native-display')
+real=ns['command']
+def run(args):
+    if args[:2]==['/usr/bin/systemctl','is-active'] and args[-1]=='oneplus13-ram-usb.service':
+        return 'active'
+    return real(args)
+ns['runtime_checks'](__import__('os').uname().release,run=run,now=lambda:0.0)
+PY
+echo ONEPLUS13_NATIVE_RUNTIME_GUARDS_OFFLINE_OK
+# Reject absent private payload in the actual public QEMU root, without loading.
+if /usr/libexec/oneplus13-native-display --check; then
+    echo 'Native preflight unexpectedly accepted the public QEMU root'; exit 1
+fi
+[ ! -d /sys/module/panel_oneplus_aa569 ]
+[ ! -d /sys/module/msm ]
+echo ONEPLUS13_NATIVE_PREFLIGHT_OFFLINE_OK
+if [ -f /etc/oneplus13-native-candidate ]; then
+    # A local private-image check validates the actual data-only handoff.
+    # The generic public image still exercises all synthetic failure cases.
+    /usr/bin/python3 - <<'PY'
+import hashlib,os,pathlib
+p=pathlib.Path
+marker=p('/etc/oneplus13-native-handoff').read_text().splitlines()
+assert marker[:2]==['ONEPLUS13_NATIVE_HANDOFF_V1',os.uname().release]
+assert p('/etc/oneplus13-native-candidate').read_text()==os.uname().release+'\n'
+for name,digest in zip(['/usr/lib/firmware/qcom/sm8750/oneplus/dodge/aa569-spr-v1.bin','/run/oneplus13/native/start-native-display'],marker[2:]):
+    assert hashlib.sha256(p(name).read_bytes()).hexdigest()==digest
+assert len(marker)==4
+assert p('/run/oneplus13/native/start-native-display').stat().st_mode & 0o111 == 0
+assert not p('/run/oneplus13/native/activation-attempted').exists()
+print('ONEPLUS13_PRIVATE_NATIVE_HANDOFF_OK')
+PY
+    echo ONEPLUS13_NATIVE_HANDOFF_OFFLINE_OK
+else
+    /run/oneplus13/native-handoff-selftest
+fi
+echo ONEPLUS13_DESKTOP_HANDOFF_OK
+trap - EXIT
+EOF
+chmod 755 /newroot/run/oneplus13/qemu-check
+mkdir -p /newroot/run/systemd/system/multi-user.target.wants
+cat > /newroot/run/systemd/system/oneplus13-qemu-check.service <<'EOF'
+[Unit]
+Description=Observe the actual GNOME rootfs handoff in QEMU only
+Wants=NetworkManager.service dbus.service oneplus13-ram-evidence.service
+After=NetworkManager.service dbus.service oneplus13-ram-evidence.service
+[Service]
+Type=oneshot
+ExecStart=/run/oneplus13/qemu-check
+StandardOutput=journal+console
+StandardError=journal+console
+EOF
+ln -s ../oneplus13-qemu-check.service /newroot/run/systemd/system/multi-user.target.wants/oneplus13-qemu-check.service
+mkdir -p /newroot/run/systemd/system/oneplus13-ram-deadline.timer.d \
+    /newroot/run/systemd/system/oneplus13-ram-deadline.service.d
+cat > /newroot/run/systemd/system/oneplus13-ram-deadline.timer.d/qemu.conf <<EOF
+[Timer]
+OnBootSec=
+OnBootSec=${deadline}s
+EOF
+cat > /newroot/run/systemd/system/oneplus13-ram-deadline.service.d/qemu.conf <<'EOF'
+[Service]
+ExecStartPre=/usr/bin/busybox echo ONEPLUS13_QEMU_DEADLINE_FIRED
+StandardOutput=journal+console
+StandardError=journal+console
+EOF

@@ -1,0 +1,117 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# Mount the installed ext4 root from the OnePlus 13 temporary initramfs.
+set -eu
+set -o pipefail
+persistent=0
+root_spec=
+for arg in $(cat /proc/cmdline); do
+    case "$arg" in
+        oneplus13.persistent=1) persistent=1 ;;
+        oneplus13.root=*) root_spec=${arg#*=} ;;
+    esac
+done
+[ "$persistent" = 1 ]
+[ "$root_spec" = PARTLABEL=linux_rootfs ]
+
+find_part() {
+    wanted=$1
+    if [ -e "/dev/disk/by-partlabel/$wanted" ]; then
+        readlink -f "/dev/disk/by-partlabel/$wanted"
+        return 0
+    fi
+    for uevent in /sys/class/block/*/uevent; do
+        [ -e "$uevent" ] || continue
+        grep -qx "PARTNAME=$wanted" "$uevent" || continue
+        disk=${uevent%/uevent}
+        printf '/dev/%s\n' "${disk##*/}"
+        return 0
+    done
+    return 1
+}
+
+for attempt in $(seq 1 10); do
+    rootdev=$(find_part linux_rootfs) && [ -b "$rootdev" ] && break
+    sleep 1
+done
+[ -b "$rootdev" ] || { echo 'Missing linux_rootfs block device'; exit 1; }
+[ "$(blockdev --getro "$rootdev")" = 0 ] || { echo "$rootdev is read-only"; exit 1; }
+mkdir -p /newroot
+mount -t ext4 -o rw,noatime "$rootdev" /newroot
+cleanup_failed_mounts() {
+    umount /newroot/tmp 2>/dev/null || true
+    umount /newroot/run 2>/dev/null || true
+    umount /newroot
+}
+trap cleanup_failed_mounts EXIT
+grep -q ' /newroot ext4 rw,' /proc/mounts
+[ -x /newroot/usr/lib/systemd/systemd ]
+[ "$(cat /newroot/usr/lib/oneplus13-desktop/version)" = 1 ]
+[ "$(cat /newroot/usr/lib/oneplus13-desktop/kernel-release)" = "$(uname -r)" ]
+
+for dir in dev proc sys run tmp mnt/shared; do mkdir -p "/newroot/$dir"; done
+mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /newroot/run
+mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /newroot/tmp
+
+. /bin/oneplus13-native-handoff
+stage_native_payload / /newroot "$(uname -r)" 1
+runtime=/newroot/run
+hardware=$runtime/oneplus13/persistent
+units=$runtime/systemd/system
+mkdir -m 0700 "$hardware"
+: > "$runtime/oneplus13/persistent-session"
+cp /op13-persistent/* "$hardware/"
+mkdir -p "$units/gdm.service.d"
+cp "$hardware/oneplus13-persistent-hardware.service" "$units/"
+cp "$hardware/oneplus13-persistent-peripherals.service" "$units/"
+cp "$hardware/oneplus13-charger.service" "$units/"
+cp "$hardware/oneplus13-charger.target" "$units/"
+case " $(cat /proc/cmdline) " in
+    *' androidboot.mode=charger '*)
+        mkdir -p "$units/oneplus13-power-key@.service.d"
+        cat > "$units/oneplus13-power-key@.service.d/90-charger.conf" <<'EOF'
+[Unit]
+ConditionKernelCommandLine=!androidboot.mode=charger
+EOF
+        ;;
+esac
+cp "$hardware/persistent-peripherals.py" /newroot/usr/libexec/oneplus13-persistent-peripherals.py
+cp "$hardware/10-oneplus13-fastrpc.rules" \
+    /newroot/etc/udev/rules.d/10-oneplus13-fastrpc.rules
+chmod 0644 /newroot/etc/udev/rules.d/10-oneplus13-fastrpc.rules
+cp "$hardware/49-oneplus13-sensor-proxy.rules" \
+    /newroot/etc/polkit-1/rules.d/49-oneplus13-sensor-proxy.rules
+chmod 0644 /newroot/etc/polkit-1/rules.d/49-oneplus13-sensor-proxy.rules
+cp "$hardware/op13-switch" /newroot/usr/local/sbin/op13-switch
+chmod 0755 /newroot/usr/local/sbin/op13-switch
+ln -sfn ../sbin/op13-switch /newroot/usr/local/bin/op13-switch
+cp "$hardware/op13-reboot-android.desktop" /newroot/usr/share/applications/op13-reboot-android.desktop
+chmod 0644 /newroot/usr/share/applications/op13-reboot-android.desktop
+mkdir -p /newroot/etc/systemd/system/multi-user.target.wants
+ln -sfn /run/systemd/system/oneplus13-persistent-peripherals.service \
+    /newroot/etc/systemd/system/multi-user.target.wants/oneplus13-persistent-peripherals.service
+cat > "$units/gdm.service.d/65-oneplus13-persistent.conf" <<'EOF'
+[Unit]
+Requires=oneplus13-persistent-hardware.service
+After=oneplus13-persistent-hardware.service
+EOF
+case " $(cat /proc/cmdline) " in
+    *' oneplus13.persistent.debug=1 '*)
+        for service in usb dhcp http shell; do
+            dropin=$units/oneplus13-ram-$service.service.d
+            mkdir -p "$dropin"
+            cat > "$dropin/90-persistent-debug.conf" <<'EOF'
+[Unit]
+ConditionKernelCommandLine=
+ConditionKernelCommandLine=oneplus13.persistent.debug=1
+ConditionPathExists=
+ConditionPathExists=/sys/kernel/config/usb_gadget/oneplus13/UDC
+[Service]
+RuntimeMaxSec=20min
+EOF
+        done ;;
+esac
+mkdir -p /newroot/run/evidence
+echo ONEPLUS13_PERSISTENT_ROOT_READY > /newroot/run/evidence/rootfs.txt
+/bin/oneplus13-physical-platform /sys
+trap - EXIT

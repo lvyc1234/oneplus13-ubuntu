@@ -47,7 +47,7 @@ PACKAGE = REPO / 'packaging/erhai-sensors'
 PREFIX = 'usr/lib/erhai/sensors'
 RPCD_ROOT = 'usr/share/erhai-sensors/hexagonrpcd'
 STATE = '/var/lib/erhai/sensors'
-MAINTAINER = 'yzddmr6 <46088090+yzddmr6@users.noreply.github.com>'
+MAINTAINER = 'Erwin <yzddmr7@gmail.com>'
 # What the package takes from the staged installs. Headers, pkg-config files,
 # the CHRE client, the mock SSC server and the proxy's own unit, rules and
 # D-Bus policy are build by-products: Ubuntu's iio-sensor-proxy keeps owning
@@ -231,7 +231,7 @@ def main():
     for tool in ('unshare', 'dpkg-deb'):
         if shutil.which(tool) is None:
             die(f'{tool} is required')
-    if not Path('/proc/sys/fs/binfmt_misc/qemu-aarch64').is_file():
+    if os.uname().machine not in ('aarch64', 'arm64') and not Path('/proc/sys/fs/binfmt_misc/qemu-aarch64').is_file():
         die('arm64 binfmt (qemu-user-static) is required to run the build root')
     if not HOST_CA.is_file():
         die(f'{HOST_CA} is required for TLS to the snapshot service')

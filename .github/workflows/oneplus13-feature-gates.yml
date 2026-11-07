@@ -1,0 +1,44 @@
+name: OnePlus 13 WiFi and retained feature gates
+on:
+  push:
+    branches: [oneplus13-platform-handoff-20261026]
+    paths:
+      - .github/workflows/oneplus13-feature-gates.yml
+      - tools/oneplus13/automatic-wifi-check.py
+      - tools/oneplus13/verify-preserved-features.py
+      - tests/test_oneplus13_automatic_wifi.py
+      - tests/test_oneplus13_preserved_features.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  feature-gates:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Execute the WiFi and exact-candidate delivery guards
+        run: |
+          test "$(uname -m)" = aarch64
+          mkdir -p out/feature-gates
+          python3 -m unittest discover -s tests -p test_oneplus13_automatic_wifi.py -v 2>&1 | tee out/feature-gates/wifi.log
+          python3 -m unittest discover -s tests -p test_oneplus13_preserved_features.py -v 2>&1 | tee out/feature-gates/preservation.log
+          python3 - <<'PY'
+          import hashlib,json,pathlib,platform,re
+          root=pathlib.Path('.');out=root/'out/feature-gates'
+          counts={n:int(re.search(r'Ran (\d+) tests',(out/(n+'.log')).read_text())[1]) for n in ['wifi','preservation']}
+          assert counts=={'wifi':30,'preservation':7}
+          files=['tools/oneplus13/automatic-wifi-check.py','tools/oneplus13/verify-preserved-features.py','tests/test_oneplus13_automatic_wifi.py','tests/test_oneplus13_preserved_features.py']
+          proof={'scope':'NATIVE_ARM64_SYNTHETIC_GUARDS_ONLY','machine':platform.machine(),'tests':counts,'phone_operations':0,
+                 'hardware_qualified':False,'files':{n:hashlib.sha256((root/n).read_bytes()).hexdigest() for n in files}}
+          (out/'verification.json').write_text(json.dumps(proof,indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: oneplus13-feature-gates-${{ github.sha }}
+          path: out/feature-gates
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,66 @@
+{
+  "scope": "ISOLATED_CPHY_FRAMEWORK_ONLY_NO_PHONE_TABLE_OR_ACTIVATION",
+  "upstream_url": "https://lore.kernel.org/all/20261017-cphy_support-v1-0-8b0e1237ce95@oss.qualcomm.com/",
+  "archive_mirror_url": "https://lore.landau.one/lkml/188ee6c7-533d-46ec-8c42-1fbefba54f06@oss.qualcomm.com/t.mbox.gz",
+  "upstream_messages": [
+    {
+      "file": "01.patch",
+      "sha256": "d5287644000d444035ecec4391b55f3801ed300021f855ce17f80add1f0a9afd",
+      "message_id": "<20261017-cphy_support-v1-1-8b0e1237ce95@oss.qualcomm.com>",
+      "author": "Nihal Kumar Gupta <nihal.gupta@oss.qualcomm.com>"
+    },
+    {
+      "file": "02.patch",
+      "sha256": "853173f3fe8695be23343429e05de468e7961a50efd4d44ea08beccd3aa9a84a",
+      "message_id": "<20261017-cphy_support-v1-2-8b0e1237ce95@oss.qualcomm.com>",
+      "author": "Nihal Kumar Gupta <nihal.gupta@oss.qualcomm.com>"
+    },
+    {
+      "file": "03.patch",
+      "sha256": "17ecd0ca99b65cf0a2fffa887f64ac436b69e9b1fecb1e4e4ebb477134f4fecd",
+      "message_id": "<20261017-cphy_support-v1-3-8b0e1237ce95@oss.qualcomm.com>",
+      "author": "Nihal Kumar Gupta <nihal.gupta@oss.qualcomm.com>"
+    },
+    {
+      "file": "04.patch",
+      "sha256": "ce6b4287587b946053df65dab9e6b2cad722a4f4fe27421120fda870232132bb",
+      "message_id": "<20261017-cphy_support-v1-4-8b0e1237ce95@oss.qualcomm.com>",
+      "author": "Nihal Kumar Gupta <nihal.gupta@oss.qualcomm.com>"
+    },
+    {
+      "file": "05.patch",
+      "sha256": "11db307369e2dd3a6586d462b92622a761c0fa2179891f605d4cfab9c3898791",
+      "message_id": "<20261017-cphy_support-v1-5-8b0e1237ce95@oss.qualcomm.com>",
+      "author": "Nihal Kumar Gupta <nihal.gupta@oss.qualcomm.com>"
+    },
+    {
+      "file": "06.patch",
+      "sha256": "e7f6f114574a736ea0b9a28b2f89e12f69e718eb41032134b7d4f50a398981aa",
+      "message_id": "<20261017-cphy_support-v1-6-8b0e1237ce95@oss.qualcomm.com>",
+      "author": "Nihal Kumar Gupta <nihal.gupta@oss.qualcomm.com>"
+    }
+  ],
+  "rebase_patch_sha256": "11a936c57d98500b57e89484953b8cb89f0645581a94207dfbf63fa8448f58dd",
+  "base_files": {
+    "drivers/media/platform/qcom/camss/camss-csiphy.c": "f0989a3636c17c76f11670b8532236d4359b2b0f65d3bf6549176a796926e0bb",
+    "drivers/media/platform/qcom/camss/camss-csiphy.h": "62395f1bf43ecb50d6bd9c474fd0c87dc022aea3daac404bde19b405333882df",
+    "drivers/media/platform/qcom/camss/camss.c": "a31ffa664b7c28d9f1154e3048f8d928350f0882b08260d11c20009f795185e8",
+    "drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c": "4abf113ba2233389e2f74befb8f1e7c3241d71548e0062e850b0fdf2a4730334",
+    "drivers/phy/qualcomm/phy-qcom-mipi-csi2-core.c": "35771b47618a6ade0cbfd831511b1794c5a41c51f2960c22ebc19e641bb154ab",
+    "drivers/phy/qualcomm/phy-qcom-mipi-csi2.h": "c103fd6aa00094e84555e1bc7d91672c18b78e328af06c155b97685c4837d20b",
+    "include/linux/phy/phy.h": "3ce355a49e0025a377c855708d70392726b0d50805cb9823475908d6480153f3",
+    "include/media/v4l2-mediabus.h": "619240ab81bb869f3d7f55d6d963c2ed9d3a5b5105da1764ca6e29395c401c5a"
+  },
+  "generated_files": {
+    "drivers/media/platform/qcom/camss/camss-csiphy.c": "7947ff31664ebc3ef934656730c608c2501cd86a21be07e1a37e4f29fdcebf92",
+    "drivers/media/platform/qcom/camss/camss-csiphy.h": "83bede13a8ba27a2a8ae650bfd2032b53e3240d09b4e16091cf69de2d314fe73",
+    "drivers/media/platform/qcom/camss/camss.c": "0f77dd82893affc04108a1e4951c7db80697f1a177f624835855a30263f93805",
+    "drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c": "bf1d45381941b915e354a6abf573c4db9750dca418b7c15a68a403c403180865",
+    "drivers/phy/qualcomm/phy-qcom-mipi-csi2-core.c": "b3dd10069fd92cf688ebcc1dbb2314da1347a6765f11809cd8775b6e31602a80",
+    "drivers/phy/qualcomm/phy-qcom-mipi-csi2.h": "023e6fe2145d2a93b57efffad9003a2ebf972015b99f940a102dc8abb60f097e",
+    "include/linux/phy/phy.h": "5517f341de834d40e96231c9f375172443a758a7d017acd14a513890d30c97bd",
+    "include/media/v4l2-mediabus.h": "35e58cc9ce612b51641541bc8a6faf3c8c41aacc0630f153207313f969951f5b"
+  },
+  "phone_register_table_present": false,
+  "hardware_qualified": false
+}

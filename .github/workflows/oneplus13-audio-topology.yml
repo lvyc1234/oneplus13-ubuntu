@@ -1,0 +1,50 @@
+name: OnePlus 13 offline audio topology review
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install device-tree compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends device-tree-compiler
+      - name: Check ancestor enablement and bounded quarantine
+        run: python3 -m unittest discover -s tests -p test_oneplus13_audio_topology.py -v
+      - name: Independently compile synthetic controls and read back quarantine
+        run: |
+          mkdir -p out/audio-topology
+          dtc -I dts -O dtb -o out/audio-topology/stock.dtb tests/fixtures/oneplus13-audio-stock-disabled.dts
+          dtc -I dts -O dtb -o out/audio-topology/candidate.dtb tests/fixtures/oneplus13-audio-candidate-wsa.dts
+          python3 tools/oneplus13/review-audio-topology.py --stock out/audio-topology/stock.dtb --candidate out/audio-topology/candidate.dtb --report out/audio-topology/review.json --quarantine-output out/audio-topology/quarantine.dtb
+          dtc -I dtb -O dts -o out/audio-topology/quarantine.dts out/audio-topology/quarantine.dtb
+          python3 - <<'PY'
+          import json,sys
+          sys.path.insert(0,'tools/oneplus13')
+          from stock import Fdt,cells
+          from pathlib import Path
+          p=Path('out/audio-topology')
+          r=json.loads((p/'review.json').read_text())
+          t=Fdt((p/'quarantine.dtb').read_bytes())
+          assert r['quarantined_candidate']['enabled_wsa_nodes']==0
+          assert r['unrelated_properties_preserved'] and r['nonaudio_quarantine_complete']
+          assert cells(t.nodes['/display']['protected-value'])==[0x1234]
+          assert not r['audio_supported'] and not r['eligible_for_wsa_stream']
+          print('OFFLINE_ONLY: synthetic compiler/reader controls passed; no hardware acceptance')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oneplus13-audio-topology-synthetic-${{ github.sha }}
+          path: out/audio-topology/
+          retention-days: 7
+          if-no-files-found: error

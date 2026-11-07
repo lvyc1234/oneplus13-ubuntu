@@ -1,0 +1,18 @@
+/dts-v1/;
+/* Synthetic quarantine control; not a deployable device tree. */
+/ {
+    display { status = "okay"; protected-value = <0x1234>; };
+    soundwire {
+        compatible = "qcom,soundwire-v2.1.0";
+        status = "okay";
+        left: speaker-left { compatible = "sdw20217020400"; #sound-dai-cells = <0>; };
+        right: speaker-right { compatible = "sdw20217020400"; #sound-dai-cells = <0>; };
+    };
+    sound {
+        wsa-playback-dai-link {
+            codec { sound-dai = <&left &right>; };
+            cpu {};
+            platform {};
+        };
+    };
+};

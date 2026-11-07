@@ -1,0 +1,109 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH 9/9] drm/msm/dsi: select fixed public AA569 V7.2 timings
+
+Preserve the exact OnePlusOSS production profile only for the attached
+AA569/SM8750/DSI0 command D-PHY candidate at its fixed lane rate.
+Reject unsupported requests before PHY MMIO; ordinary timings unchanged.
+Author: Codex. No hardware Tested-by claim.
+
+diff --git a/drivers/gpu/drm/msm/dsi/dsi.h b/drivers/gpu/drm/msm/dsi/dsi.h
+--- a/drivers/gpu/drm/msm/dsi/dsi.h
++++ b/drivers/gpu/drm/msm/dsi/dsi.h
+@@ -137,6 +137,8 @@
+ struct msm_dsi_phy_clk_request {
+ 	unsigned long bitclk_rate;
+ 	unsigned long escclk_rate;
++	/* Experimental AA569 host requests the fixed public production timing. */
++	bool aa569_fixed_timing;
+ };
+ 
+ void msm_dsi_phy_driver_register(void);
+diff --git a/drivers/gpu/drm/msm/dsi/dsi_host.c b/drivers/gpu/drm/msm/dsi/dsi_host.c
+--- a/drivers/gpu/drm/msm/dsi/dsi_host.c
++++ b/drivers/gpu/drm/msm/dsi/dsi_host.c
+@@ -2696,6 +2696,13 @@
+ 	const struct msm_dsi_cfg_handler *cfg_hnd = msm_host->cfg_hnd;
+ 	int ret;
+ 
++	/* Never leave stale rates/selection after an invalid clock calculation. */
++	memset(clk_req, 0, sizeof(*clk_req));
++	if (msm_host->aa569_batch &&
++	    (msm_host->id != DSI_0 || msm_host->lanes != 4 ||
++	     !dsi_use_native422_hs_rate(msm_host, is_bonded_dsi) ||
++	     msm_host->hs_rate != 1363200000UL))
++		return;
+ 	ret = cfg_hnd->ops->calc_clk_rate(msm_host, is_bonded_dsi);
+ 	if (ret) {
+ 		pr_err("%s: unable to calc clk rate, %d\n", __func__, ret);
+@@ -2711,6 +2718,7 @@
+ 	else
+ 		clk_req->bitclk_rate = msm_host->byte_clk_rate * 8;
+ 	clk_req->escclk_rate = msm_host->esc_clk_rate;
++	clk_req->aa569_fixed_timing = msm_host->aa569_batch;
+ }
+ 
+ void msm_dsi_host_enable_irq(struct mipi_dsi_host *host)
+diff --git a/drivers/gpu/drm/msm/dsi/dsi_manager.c b/drivers/gpu/drm/msm/dsi/dsi_manager.c
+--- a/drivers/gpu/drm/msm/dsi/dsi_manager.c
++++ b/drivers/gpu/drm/msm/dsi/dsi_manager.c
+@@ -124,7 +124,7 @@
+ static int enable_phy(struct msm_dsi *msm_dsi,
+ 		      struct msm_dsi_phy_shared_timings *shared_timings)
+ {
+-	struct msm_dsi_phy_clk_request clk_req;
++	struct msm_dsi_phy_clk_request clk_req = { 0 };
+ 	bool is_bonded_dsi = IS_BONDED_DSI();
+ 
+ 	msm_dsi_host_get_phy_clk_req(msm_dsi->host, &clk_req, is_bonded_dsi);
+diff --git a/drivers/gpu/drm/msm/dsi/phy/dsi_phy_7nm.c b/drivers/gpu/drm/msm/dsi/phy/dsi_phy_7nm.c
+--- a/drivers/gpu/drm/msm/dsi/phy/dsi_phy_7nm.c
++++ b/drivers/gpu/drm/msm/dsi/phy/dsi_phy_7nm.c
+@@ -953,6 +953,38 @@
+ 	}
+ }
+ 
++static int dsi_aa569_fixed_timing(struct msm_dsi_phy *phy,
++				 const struct msm_dsi_phy_clk_request *req)
++{
++	struct msm_dsi_dphy_timing *timing = &phy->timing;
++
++	if (!req->aa569_fixed_timing)
++		return 0; /* Ordinary Pad/other panel timings remain unchanged. */
++	if (phy->cfg != &dsi_phy_3nm_8750_cfgs || phy->id != DSI_0 ||
++	    phy->cphy_mode || phy->usecase != MSM_DSI_PHY_STANDALONE ||
++	    req->bitclk_rate != 1363200000UL || !req->escclk_rate)
++		return -EINVAL;
++
++	/* Public OnePlusOSS d50b305f7da9 AA569 production wqhd_sdc_120:
++	 * 00 2c 0c 0c 1d 1a 0c 0c 0b 02 04 00 24 11.
++	 * V7.2 writes all fourteen values directly. Keep shared host timing in
++	 * the same transaction: msm_dsi_phy_enable copies it after PHY enable.
++	 */
++	timing->clk_zero = 0x2c;
++	timing->clk_prepare = 0x0c;
++	timing->clk_trail = 0x0c;
++	timing->hs_exit = 0x1d;
++	timing->hs_zero = 0x1a;
++	timing->hs_prepare = 0x0c;
++	timing->hs_trail = 0x0c;
++	timing->hs_rqst = 0x0b;
++	timing->shared_timings.clk_pre = 0x24;
++	timing->shared_timings.clk_post = 0x11;
++	timing->shared_timings.clk_pre_inc_by_2 = false;
++	timing->shared_timings.byte_intf_clk_div_2 = true;
++	return 0;
++}
++
+ static int dsi_7nm_phy_enable(struct msm_dsi_phy *phy,
+ 			      struct msm_dsi_phy_clk_request *clk_req)
+ {
+@@ -980,6 +1012,9 @@
+ 			      "%s: PHY timing calculation failed\n", __func__);
+ 		return -EINVAL;
+ 	}
++	ret = dsi_aa569_fixed_timing(phy, clk_req);
++	if (ret)
++		return ret; /* All fixed-profile rejection occurs before MMIO. */
+ 
+ 	if (dsi_phy_hw_v4_0_is_pll_on(phy))
+ 		pr_warn("PLL turned on before configuring PHY\n");

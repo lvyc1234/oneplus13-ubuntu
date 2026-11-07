@@ -1,0 +1,3 @@
+# UDisks merges this late, device-specific default with filesystem defaults.
+# Keep the automatic RAM desktop's removable storage readonly at mount time.
+SUBSYSTEM=="block", SUBSYSTEMS=="usb", ENV{ID_FS_USAGE}=="filesystem", TEST=="/run/oneplus13-auto-otg/desktop-mode", ENV{UDISKS_MOUNT_OPTIONS_DEFAULTS}="ro"

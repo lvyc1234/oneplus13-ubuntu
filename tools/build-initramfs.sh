@@ -16,7 +16,7 @@ out=${OUT_DIR:-"$ws/out/initramfs-dev"}
 gen_init_cpio=${GEN_INIT_CPIO:-"$ws/out/kernel-firstboot/usr/gen_init_cpio"}
 expected=52151e7f322f926b64049cdaa1410dc3ea6485525e0624b05813791c219ae933
 [[ $(sha256sum "$busybox" | cut -d' ' -f1) == "$expected" ]] || {
-	echo 'Expected the pinned Ubuntu ARM64 static BusyBox; see README.en.md (inputs).' >&2
+	echo 'Expected the pinned Ubuntu ARM64 static BusyBox; see README.md (inputs).' >&2
 	exit 1
 }
 [[ -x $gen_init_cpio ]] || {
@@ -170,11 +170,6 @@ trap 'rm -rf -- "$stage"' EXIT
 			[[ -f $seg ]] || continue
 			printf 'file %s/%s %s 0644 0 0\n' "$adsp_dst" "$(basename -- "$seg")" "$seg"
 		done
-		# The SoCCP starts early through PAS so that it can drop the boot bus
-		# vote it inherits from the bootloader; that happens before the root
-		# is mounted.
-		[[ -f $adsp_src/soccp.mbn ]] || { echo "SoCCP firmware not found: $adsp_src/soccp.mbn" >&2; exit 1; }
-		printf 'file %s/soccp.mbn %s 0644 0 0\n' "$adsp_dst" "$adsp_src/soccp.mbn"
 	fi
 	for app in $apps; do
 		printf 'slink /bin/%s busybox 0777 0 0\n' "$app"

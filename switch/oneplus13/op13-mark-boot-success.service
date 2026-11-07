@@ -1,0 +1,14 @@
+[Unit]
+Description=Mark the verified OnePlus 13 Linux B slot as booted successfully
+ConditionKernelCommandLine=oneplus13.persistent=1
+Requires=oneplus13-persistent-hardware.service gdm.service
+After=oneplus13-persistent-hardware.service gdm.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/libexec/op13-mark-boot-success
+TimeoutStartSec=25
+
+[Install]
+WantedBy=graphical.target

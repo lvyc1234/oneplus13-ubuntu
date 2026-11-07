@@ -1,0 +1,55 @@
+name: OnePlus 13 erhai-mesa package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oneplus13-mesa-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  mesa:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install build dependencies
+        timeout-minutes: 15
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential meson \\
+            ninja-build pkg-config libdrm-dev libexpat1-dev python3-mako \\
+            python3-ply python3-yaml bison flex zlib1g-dev libzstd-dev libelf-dev \\
+            libwayland-dev libwayland-egl-backend-dev wayland-protocols libx11-dev \\
+            libx11-xcb-dev libxcb-dri2-0-dev libxcb-dri3-dev libxcb-present-dev \\
+            libxcb-randr0-dev libxcb-sync-dev libxcb-xfixes0-dev libxcb-glx0-dev \\
+            libxcb-shm0-dev libxshmfence-dev libxxf86vm-dev libxrandr-dev \\
+            libglvnd-dev glslang-tools python3-packaging libvulkan-dev vulkan-tools
+      - name: Upgrade meson (mesa 26.2.3 needs >= 1.4; distro has 1.3.2)
+        run: |
+          sudo pip3 install --break-system-packages --upgrade meson
+          meson --version
+      - name: Fetch pinned Mesa source
+        timeout-minutes: 10
+        run: |
+          curl -fsSLO https://archive.mesa3d.org/mesa-26.2.3.tar.xz
+          echo "1628058a8d2c0615975de5a15ab7bbb9638c50000b5bed9456ff423ea034a81f  mesa-26.2.3.tar.xz" | sha256sum -c -
+      - name: Build and package (original GRAPHICS.md recipe)
+        timeout-minutes: 70
+        run: |
+          python3 tools/build-mesa.py --source-archive mesa-26.2.3.tar.xz \\
+            --profile desktop --output out/mesa-desktop --jobs "$(nproc)"
+          python3 tools/package-mesa.py --build-output out/mesa-desktop \\
+            --output out/mesa-debs
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: erhai-mesa-${{ github.sha }}
+          path: out/mesa-debs/
+          if-no-files-found: error
+          retention-days: 14

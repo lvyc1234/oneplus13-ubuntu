@@ -1,0 +1,6 @@
+{
+  "kernel_addr": 32768,
+  "ramdisk_addr": 1673330,
+  "tags_addr": 0,
+  "dtb_addr": 32505856
+}

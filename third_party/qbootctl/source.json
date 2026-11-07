@@ -1,0 +1,23 @@
+{
+  "repository": "https://github.com/linux-msm/qbootctl",
+  "commit": "39a6e6daaf029fb0a083777679a15ea2c18f72de",
+  "license": "GPL-3.0-or-later and original file notices",
+  "modified": false,
+  "files": {
+    ".clang-format": "06afb7831c9f346fb2248ded3368e0c41a5f6ad40829241a58ad2cad4ed2744f",
+    ".gitignore": "2312bda000ffe39f73a82bcc81d6c3248bc99b4d8f49050ca214f65f0e40c1b0",
+    "LICENSE": "0115f0c22f1a7f4f22e1f215c125e55a8d935650e3d129a71e515bfb2436bf96",
+    "README.md": "0c8625a5d79f114f84962b9a63a9f3dc385affc89007f1ec0b82fb8d33cf3e0c",
+    "bootctrl.h": "68cce69b5945cae6676ce83d64914aa40351f3c249adb88dff1e5e2eff2a4130",
+    "bootctrl_impl.c": "aae43931be4af19be532d9992b615b4838979146295c180deb3490344edc4831",
+    "crc32.c": "a19225967af72ccffd2dfe483a86ba20de6b6515873b00a27f366b4b88dfb34d",
+    "crc32.h": "df6e6579aee74863e62bd5b6da09ae636dcf5261474fe11341d5b95e1029fbaa",
+    "gpt-utils.c": "8add8c2a0f5489c533d1145c2a7a5cf671ff856ca49559f055f99085b1a42c17",
+    "gpt-utils.h": "98ed5a5b367e59a00795d97d4b7f01d4e234b17565c9bde6a542f785ad462122",
+    "meson.build": "28daf52d7419e846541a89a24a72c076eab42abd62b182e5089a38baa0a6c15f",
+    "qbootctl.c": "2efd87644626465931f25e7f1095c8cafcc8badabc7d0507ab6d835c38037d8f",
+    "ufs-bsg.c": "7089d10f168027effa89454e42cf08fb0b31e56c89f3eb3213fef643a281fb75",
+    "ufs-bsg.h": "8a39de76f194dfe1eb7e31b9f00f6a03b33ad69de4bd3ce2b21d92a2223aecbf",
+    "utils.h": "3825fac477e5f04832156fdda0910d51b64834eed2e262a44255bc67c4957d80"
+  }
+}

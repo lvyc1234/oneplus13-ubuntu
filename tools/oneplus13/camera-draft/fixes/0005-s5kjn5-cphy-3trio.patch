@@ -1,0 +1,101 @@
+--- a/drivers/media/i2c/s5kjn5.c
++++ b/drivers/media/i2c/s5kjn5.c
+@@ -85,15 +85,18 @@
+ 
+ #define S5KJN5_XVCLK_RATE		19200000
+ 
+-#define S5KJN5_DATA_LANES		4
++#define S5KJN5_DATA_LANES		3
+ #define S5KJN5_RGB_DEPTH		10
++#define S5KJN5_CPHY_LINK_FREQ		1400000000LL
++#define S5KJN5_CPHY_PREPARE_NS		38
++#define S5KJN5_CPHY_PREAMBLE_NS		300
+ 
+ /* Full 50.3 Mpx active pixel array */
+ #define S5KJN5_NATIVE_WIDTH		8192
+ #define S5KJN5_NATIVE_HEIGHT		6144
+ 
+ static const s64 s5kjn5_link_freqs[] = {
+-	1248000000LL,
++	S5KJN5_CPHY_LINK_FREQ,
+ };
+ 
+ static u64 s5kjn5_to_pixel_rate(u32 f_index)
+@@ -108,7 +111,6 @@
+ 	"vddd",
+ 	"vddm",
+ 	"vdda",
+-	"vddio1p2",
+ 	"afvdd",
+ };
+ 
+@@ -1689,6 +1691,8 @@
+ };
+ 
+ static const struct cci_reg_sequence s5kjn5_4096x3072_regs[] = {
+ 	{ CCI_REG16(0xfcfc), 0x4000 },
++	{ CCI_REG16(0x0b30), 0x0102 },
++	{ CCI_REG16(0x0264), 0x0606 },
+ 	{ CCI_REG16(0x6170), 0xffff },
+ 	{ CCI_REG16(0x6180), 0x0000 },
+@@ -1740,7 +1743,7 @@
+ 	{ CCI_REG16(0x0702), 0x0000 },
+ 	{ CCI_REG16(0x0704), 0x0000 },
+ 	{ CCI_REG16(0x0114), 0x0301 },
+-	{ CCI_REG16(0x0118), 0x0004 },
++	{ CCI_REG16(0x0118), 0x0003 },
+ 	{ CCI_REG16(0x011a), 0x0001 },
+ 	{ CCI_REG16(0x011c), 0x0100 },
+ 	{ CCI_REG16(0xfcfc), 0x2000 },
+@@ -2371,7 +2374,7 @@
+ {
+ 	struct fwnode_handle *fwnode = dev_fwnode(dev), *ep;
+ 	struct v4l2_fwnode_endpoint bus_cfg = {
+-		.bus_type = V4L2_MBUS_CSI2_DPHY,
++		.bus_type = V4L2_MBUS_CSI2_CPHY,
+ 	};
+ 	unsigned long freq_bitmap;
+ 	int ret;
+@@ -2388,9 +2391,10 @@
+ 	if (ret)
+ 		return dev_err_probe(dev, ret, "failed to parse endpoint\n");
+ 
+-	if (bus_cfg.bus.mipi_csi2.num_data_lanes != S5KJN5_DATA_LANES) {
++	if (bus_cfg.bus_type != V4L2_MBUS_CSI2_CPHY ||
++	    bus_cfg.bus.mipi_csi2.num_data_lanes != S5KJN5_DATA_LANES) {
+ 		ret = dev_err_probe(dev, -EINVAL,
+-				    "only %u data lanes supported\n",
++				    "only %u C-PHY trios supported\n",
+ 				    S5KJN5_DATA_LANES);
+ 		goto out;
+ 	}
+@@ -2706,6 +2710,21 @@
+ 	}
+ }
+ 
++static int s5kjn5_get_mbus_config(struct v4l2_subdev *sd, unsigned int pad,
++				  struct v4l2_mbus_config *cfg)
++{
++	if (pad != 0)
++		return -EINVAL;
++
++	cfg->type = V4L2_MBUS_CSI2_CPHY;
++	cfg->link_freq = S5KJN5_CPHY_LINK_FREQ;
++	cfg->bus.mipi_csi2.num_data_lanes = S5KJN5_DATA_LANES;
++	cfg->bus.mipi_csi2.t_prepare_ns = S5KJN5_CPHY_PREPARE_NS;
++	cfg->bus.mipi_csi2.t_preamble_ns = S5KJN5_CPHY_PREAMBLE_NS;
++
++	return 0;
++}
++
+ static int s5kjn5_init_state(struct v4l2_subdev *sd,
+ 			     struct v4l2_subdev_state *state)
+ {
+@@ -2727,6 +2746,7 @@
+ 	.get_fmt		= v4l2_subdev_get_fmt,
+ 	.set_fmt		= s5kjn5_set_fmt,
+ 	.get_selection		= s5kjn5_get_selection,
++	.get_mbus_config	= s5kjn5_get_mbus_config,
+ 	.enable_streams		= s5kjn5_enable_streams,
+ 	.disable_streams	= s5kjn5_disable_streams,
+ };

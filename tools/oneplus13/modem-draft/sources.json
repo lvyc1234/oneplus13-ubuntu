@@ -1,0 +1,15 @@
+{
+  "scope": "PUBLIC_MSM_SHAREDMEM_WITH_MAINLINE_API_AND_CMA_CLEANUP",
+  "upstream_repository": "https://github.com/LineageOS/android_kernel_oneplus_sm8750",
+  "upstream_ref": "lineage-24.0",
+  "upstream_blob": "84dafa706b28edd10051ab3960d67c9ed6105c40",
+  "upstream_sha256": "d3fc6d9d65bb4b98bf04cd18d5ba8e4aee485c32c9fabea1c6e650ae38f18c34",
+  "adapted_sha256": "a3e594bf82c2d6ae2a8d82a1f0bbff1a232b03e1a2da74931c257b327bd49207",
+  "changes": [
+    "mainline qcom_scm.h and QCOM_SCM_VMID/PERM constants",
+    "track and free dynamically allocated CMA on remove and failed UIO registration",
+    "restore HLOS permissions before freeing CMA",
+    "use current UIO physical-memory mmap and void platform remove APIs"
+  ],
+  "hardware_qualified": false
+}

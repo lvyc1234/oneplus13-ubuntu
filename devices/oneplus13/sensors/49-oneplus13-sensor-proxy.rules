@@ -1,0 +1,6 @@
+polkit.addRule(function(action, subject) {
+    if (action.id === "net.hadess.SensorProxy.claim-sensor" &&
+        ((subject.active && subject.local) || subject.user === "root")) {
+        return polkit.Result.YES;
+    }
+});

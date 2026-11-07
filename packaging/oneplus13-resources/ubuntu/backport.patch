@@ -1,0 +1,999 @@
+--- a/0001-cpu-Fall-back-to-CPU-prefixed-thermal-zones.patch
++++ b/0001-cpu-Fall-back-to-CPU-prefixed-thermal-zones.patch
+@@ -1,6 +1,6 @@
+-From de031656f48a1b99e0fc34711540f1a7c8a58c92 Mon Sep 17 00:00:00 2001
++From 6354dab175dada9423d5841d7dbfeb2a693ceb6b Mon Sep 17 00:00:00 2001
+ From: yzddmr6 <46088090+yzddmr6@users.noreply.github.com>
+-Date: Sat, 24 Oct 2026 22:44:31 +0800
++Date: Sat, 24 Oct 2026 22:45:16 +0800
+ Subject: [PATCH 1/4] cpu: Fall back to CPU-prefixed thermal zones
+ 
+ Keep the existing hwmon and thermal-zone preferences. If none match,
+@@ -13,16 +13,16 @@
+ 
+ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+ ---
+- src/devices/cpu.rs   | 37 +++++++++++--------------
+- src/utils/mod.rs     |  2 ++
++ src/utils/cpu.rs     | 37 +++++++++++--------------
++ src/utils/mod.rs     |  1 +
+  src/utils/thermal.rs | 64 ++++++++++++++++++++++++++++++++++++++++++++
+- 3 files changed, 81 insertions(+), 22 deletions(-)
++ 3 files changed, 80 insertions(+), 22 deletions(-)
+  create mode 100644 src/utils/thermal.rs
+ 
+-diff --git a/src/devices/cpu.rs b/src/devices/cpu.rs
+-index 88aab20..357a001 100644
+---- a/src/devices/cpu.rs
+-+++ b/src/devices/cpu.rs
++diff --git a/src/utils/cpu.rs b/src/utils/cpu.rs
++index 9c4bb4d..fc32424 100644
++--- a/src/utils/cpu.rs
+++++ b/src/utils/cpu.rs
+ @@ -1,4 +1,4 @@
+ -use anyhow::{Context, Result, anyhow, bail};
+ +use anyhow::{Context, Result, anyhow};
+@@ -63,8 +63,8 @@
+ +    paths
+  });
+  
+- fn search_for_cpu_temp<S: AsRef<str>>(base_path: S) -> Option<PathBuf> {
+-@@ -343,19 +348,7 @@ pub fn get_cpu_usage() -> Vec<Result<(u64, u64)>> {
++ fn search_for_first_temp<S: AsRef<str>>(base_path: S) -> Option<PathBuf> {
++@@ -320,19 +325,7 @@ pub fn get_cpu_usage() -> Vec<Result<(u64, u64)>> {
+  ///
+  /// Will return `Err` if there was no way to read the CPU temperature.
+  pub fn get_temperature() -> Result<f32> {
+@@ -86,15 +86,17 @@
+  
+  #[cfg(test)]
+ diff --git a/src/utils/mod.rs b/src/utils/mod.rs
+-index 09a7492..d2e1af5 100644
++index 1b46280..1531afe 100644
+ --- a/src/utils/mod.rs
+ +++ b/src/utils/mod.rs
+-@@ -417,3 +417,5 @@ mod test {
+-         assert_eq!(maybe, f64::default());
+-     }
+- }
+-+
+-+pub(crate) mod thermal;
++@@ -20,6 +20,7 @@ pub mod pci;
++ pub mod process;
++ pub mod settings;
++ mod snapd;
+++mod thermal;
++ pub mod units;
++ 
++ const FLATPAK_SPAWN: &str = "/usr/bin/flatpak-spawn";
+ diff --git a/src/utils/thermal.rs b/src/utils/thermal.rs
+ new file mode 100644
+ index 0000000..dfe40b4
+--- a/0002-process-data-Read-msm-counters-and-resolve-platform-.patch
++++ b/0002-process-data-Read-msm-counters-and-resolve-platform-.patch
+@@ -1,6 +1,6 @@
+-From f15442494103b96965d79348ebe9794d2ece69d4 Mon Sep 17 00:00:00 2001
++From 1466e178f711d1dcd68816d49283d82e90364346 Mon Sep 17 00:00:00 2001
+ From: yzddmr6 <46088090+yzddmr6@users.noreply.github.com>
+-Date: Sat, 24 Oct 2026 22:44:31 +0800
++Date: Sat, 24 Oct 2026 22:45:16 +0800
+ Subject: [PATCH 2/4] process-data: Read msm counters and resolve platform DRM
+  cards
+ 
+@@ -17,27 +17,66 @@
+ 
+ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+ ---
+- lib/process_data/src/fdinfo.rs    | 95 ++++++++++++++++++++++++++++---
+- lib/process_data/src/gpu_usage.rs | 19 +++++++
+- 2 files changed, 106 insertions(+), 8 deletions(-)
+-
+-diff --git a/lib/process_data/src/fdinfo.rs b/lib/process_data/src/fdinfo.rs
+-index b084810..82de55d 100644
+---- a/lib/process_data/src/fdinfo.rs
+-+++ b/lib/process_data/src/fdinfo.rs
+-@@ -1,9 +1,9 @@
+- use std::collections::{HashMap, HashSet};
+- use std::iter::Sum;
+--use std::path::PathBuf;
+-+use std::path::{Path, PathBuf};
+- use std::str::FromStr;
+- 
+--use anyhow::{Result, bail};
+-+use anyhow::{Context, Result, bail};
+- use lazy_regex::{Lazy, Regex, lazy_regex};
+- use log::trace;
+- 
+-@@ -23,6 +23,7 @@ static GFX_NS_DRM_FIELDS: Lazy<HashMap<&str, Vec<&str>>> = Lazy::new(|| {
++ lib/process_data/src/gpu_usage.rs |  19 ++++++
++ lib/process_data/src/lib.rs       | 100 ++++++++++++++++++++++++++++--
++ 2 files changed, 113 insertions(+), 6 deletions(-)
++
++diff --git a/lib/process_data/src/gpu_usage.rs b/lib/process_data/src/gpu_usage.rs
++index 2972664..8749e1b 100644
++--- a/lib/process_data/src/gpu_usage.rs
+++++ b/lib/process_data/src/gpu_usage.rs
++@@ -74,6 +74,10 @@ pub enum GpuUsageStats {
++         dec_percentage: IntegerPercentage,
++         mem_bytes: u64,
++     },
+++    MsmStats {
+++        gfx_ns: u64,
+++        mem_bytes: u64,
+++    },
++     V3dStats {
++         gfx_ns: u64,
++         mem_bytes: u64,
++@@ -122,6 +126,7 @@ impl GpuUsageStats {
++         match (self, old) {
++             (Self::AmdgpuStats { gfx_ns: a_ns, .. }, Self::AmdgpuStats { gfx_ns: b_ns, .. })
++             | (Self::I915Stats { gfx_ns: a_ns, .. }, Self::I915Stats { gfx_ns: b_ns, .. })
+++            | (Self::MsmStats { gfx_ns: a_ns, .. }, Self::MsmStats { gfx_ns: b_ns, .. })
++             | (Self::V3dStats { gfx_ns: a_ns, .. }, Self::V3dStats { gfx_ns: b_ns, .. }) => {
++                 Self::delta_ns(*a_ns, *b_ns, time_delta)
++             }
++@@ -221,6 +226,7 @@ impl GpuUsageStats {
++         match self {
++             Self::AmdgpuStats { mem_bytes, .. }
++             | Self::NvidiaStats { mem_bytes, .. }
+++            | Self::MsmStats { mem_bytes, .. }
++             | Self::V3dStats { mem_bytes, .. }
++             | Self::XeStats { mem_bytes, .. } => Some(*mem_bytes),
++             Self::I915Stats { .. } => None,
++@@ -281,6 +287,19 @@ impl GpuUsageStats {
++                 dec_percentage: *a_dec_percentage.max(b_dec_percentage),
++                 mem_bytes: *a_mem_bytes.max(b_mem_bytes),
++             },
+++            (
+++                Self::MsmStats {
+++                    gfx_ns: a_gfx_ns,
+++                    mem_bytes: a_mem_bytes,
+++                },
+++                Self::MsmStats {
+++                    gfx_ns: b_gfx_ns,
+++                    mem_bytes: b_mem_bytes,
+++                },
+++            ) => Self::MsmStats {
+++                gfx_ns: *a_gfx_ns.max(b_gfx_ns),
+++                mem_bytes: *a_mem_bytes.max(b_mem_bytes),
+++            },
++             (
++                 Self::V3dStats {
++                     gfx_ns: a_gfx_ns,
++diff --git a/lib/process_data/src/lib.rs b/lib/process_data/src/lib.rs
++index 0ee6169..4358c9e 100644
++--- a/lib/process_data/src/lib.rs
+++++ b/lib/process_data/src/lib.rs
++@@ -89,6 +89,7 @@ static GFX_NS_DRM_FIELDS: Lazy<HashMap<&str, Vec<&str>>> = Lazy::new(|| {
+      HashMap::from_iter([
+          ("amdgpu", vec!["drm-engine-compute", "drm-engine-gfx"]),
+          ("i915", vec!["drm-engine-render"]),
+@@ -45,7 +84,7 @@
+          ("v3d", vec!["drm-engine-render"]),
+      ])
+  });
+-@@ -63,6 +64,7 @@ static MEM_DRM_FIELDS: Lazy<HashMap<&str, Vec<&str>>> = Lazy::new(|| {
++@@ -129,6 +130,7 @@ static MEM_DRM_FIELDS: Lazy<HashMap<&str, Vec<&str>>> = Lazy::new(|| {
+          ("amdgpu", vec!["drm-memory-gtt", "drm-memory-vram"]),
+          ("amdxdna_accel_driver", vec!["drm-total-memory"]),
+          ("i915", vec!["drm-total-local0", "drm-total-system0"]),
+@@ -53,64 +92,73 @@
+          ("v3d", vec!["drm-total-memory"]),
+          ("xe", vec!["drm-total-gtt", "drm-total-vram0"]),
+      ])
+-@@ -74,6 +76,7 @@ pub type FdKey = (libc::pid_t, usize);
+- pub struct Fdinfo {
++@@ -209,6 +211,7 @@ pub enum Containerization {
++ struct Fdinfo {
+      pub pid: libc::pid_t,
+      pub fdinfo_num: usize,
+ +    pub gpu_identifier: Option<GpuIdentifier>,
+      pub content: HashMap<String, String>,
+  }
+  
+-@@ -163,10 +166,20 @@ pub fn collect_fdinfos(
++@@ -636,10 +639,20 @@ impl ProcessData {
+              }
+-         };
+- 
+-+        let content = parse_fdinfo(content);
+-+        let gpu_identifier = content
+-+            .get(DRM_PDEV)
+-+            .and_then(|field| PciSlot::from_str(field).ok())
+-+            .map(GpuIdentifier::PciSlot)
+-+            .or_else(|| {
+-+                content.get(DRM_DRIVER)?;
+-+                drm_node_identifier(Path::new("/sys/class/drm"), symlink_target.as_deref()?)
+-+            });
+-         return_vec.push(Fdinfo {
+-             pid,
+-             fdinfo_num: fd_num,
+--            content: parse_fdinfo(content),
+-+            gpu_identifier,
+-+            content,
+-         });
+-     }
+- 
+-@@ -216,11 +229,8 @@ fn extract_gpu_usage_from_fdinfo(fdinfo: &Fdinfo) -> Result<(GpuIdentifier, GpuU
+-     };
+- 
+-     let gpu_identifier = fdinfo
+--        .content
+--        .get(DRM_PDEV)
+--        .and_then(|field| PciSlot::from_str(field).ok())
+--        .map(GpuIdentifier::PciSlot)
+--        .unwrap_or_default();
+-+        .gpu_identifier
+-+        .context("unable to identify DRM device")?;
+- 
+-     let stats = match driver.as_str() {
+-         "amdgpu" => GpuUsageStats::AmdgpuStats {
+-@@ -233,6 +243,10 @@ fn extract_gpu_usage_from_fdinfo(fdinfo: &Fdinfo) -> Result<(GpuIdentifier, GpuU
+-             gfx_ns: drm_field(driver, &GFX_NS_DRM_FIELDS, fdinfo, &RE_DRM_TIME),
+-             video_ns: drm_field(driver, &ENC_NS_DRM_FIELDS, fdinfo, &RE_DRM_TIME),
+-         },
+-+        "msm" => GpuUsageStats::MsmStats {
+-+            gfx_ns: drm_field(driver, &GFX_NS_DRM_FIELDS, fdinfo, &RE_DRM_TIME),
+-+            mem_bytes: drm_mem_bytes(driver, fdinfo),
+-+        },
+-         "v3d" => GpuUsageStats::V3dStats {
+-             gfx_ns: drm_field(driver, &GFX_NS_DRM_FIELDS, fdinfo, &RE_DRM_TIME),
+-             mem_bytes: drm_mem_bytes(driver, fdinfo),
+-@@ -350,3 +364,68 @@ pub fn npu_usage_stats(
+- 
+-     return_map
++             let content = _content.unwrap();
++ 
+++            let content = Self::parse_fdinfo(content);
+++            let gpu_identifier = content
+++                .get(DRM_PDEV)
+++                .and_then(|field| PciSlot::from_str(field).ok())
+++                .map(GpuIdentifier::PciSlot)
+++                .or_else(|| {
+++                    content.get(DRM_DRIVER)?;
+++                    drm_node_identifier(Path::new("/sys/class/drm"), symlink_target.as_deref()?)
+++                });
++             return_vec.push(Fdinfo {
++                 pid,
++                 fdinfo_num: fd_num,
++-                content: Self::parse_fdinfo(content),
+++                gpu_identifier,
+++                content,
++             });
++         }
++ 
++@@ -753,11 +766,8 @@ impl ProcessData {
++ 
++         if let Some(driver) = driver {
++             let gpu_identifier = fdinfo
++-                .content
++-                .get(DRM_PDEV)
++-                .and_then(|field| PciSlot::from_str(field).ok())
++-                .map(GpuIdentifier::PciSlot)
++-                .unwrap_or_default();
+++                .gpu_identifier
+++                .context("unable to identify DRM device")?;
++ 
++             let stats = match driver.as_str() {
++                 // TODO: this surely can be made prettier
++@@ -792,6 +802,19 @@ impl ProcessData {
++                         .map(|names| Self::parse_drm_fields(fdinfo, names, &RE_DRM_TIME))
++                         .unwrap_or_default(),
++                 },
+++                "msm" => GpuUsageStats::MsmStats {
+++                    gfx_ns: GFX_NS_DRM_FIELDS
+++                        .get(driver.as_str())
+++                        .map(|names| Self::parse_drm_fields(fdinfo, names, &RE_DRM_TIME))
+++                        .unwrap_or_default(),
+++                    mem_bytes: MEM_DRM_FIELDS
+++                        .get(driver.as_str())
+++                        .map(|names| {
+++                            Self::parse_drm_fields::<u64, _>(fdinfo, names, &RE_DRM_KIB)
+++                                .saturating_mul(1024)
+++                        })
+++                        .unwrap_or_default(),
+++                },
++                 "v3d" => GpuUsageStats::V3dStats {
++                     gfx_ns: GFX_NS_DRM_FIELDS
++                         .get(driver.as_str())
++@@ -987,3 +1010,68 @@ where
++         })
++         .with_context(|| format!("error parsing file {}", path.display()))
+  }
+ +
+ +// Render node minors are allocated independently of primary node minors.
+@@ -161,15 +209,15 @@
+ +            pid: 42,
+ +            fdinfo_num: 3,
+ +            gpu_identifier: identifier,
+-+            content: parse_fdinfo(std::fs::read_to_string(fdinfo_path).unwrap()),
+++            content: ProcessData::parse_fdinfo(std::fs::read_to_string(fdinfo_path).unwrap()),
+ +        };
+-+        let (id, old) = extract_gpu_usage_from_fdinfo(&fdinfo).unwrap();
+++        let (id, old) = ProcessData::extract_gpu_usage_from_fdinfo(&fdinfo).unwrap();
+ +        assert_eq!(id, GpuIdentifier::Enumerator(1));
+ +        assert_eq!(old.mem(), Some(1048576));
+ +        fdinfo
+ +            .content
+ +            .insert("drm-engine-gpu".into(), "2278053180 ns".into());
+-+        let stats = other_gpu_usage_stats(&[fdinfo], &mut HashSet::new());
+++        let stats = ProcessData::other_gpu_usage_stats(&[fdinfo], &mut HashSet::new());
+ +        assert_eq!(stats[&id].gfx_fraction(&old, 1000), Some(0.5));
+ +        assert_eq!(stats[&id].gfx_fraction(&old, 0), None);
+ +        assert_eq!(old.gfx_fraction(&stats[&id], 1000), Some(0.0));
+@@ -177,57 +225,6 @@
+ +        std::fs::remove_dir_all(root).unwrap();
+ +    }
+ +}
+-diff --git a/lib/process_data/src/gpu_usage.rs b/lib/process_data/src/gpu_usage.rs
+-index aa4890d..5cdc634 100644
+---- a/lib/process_data/src/gpu_usage.rs
+-+++ b/lib/process_data/src/gpu_usage.rs
+-@@ -44,6 +44,10 @@ pub enum GpuUsageStats {
+-         dec_percentage: IntegerPercentage,
+-         mem_bytes: u64,
+-     },
+-+    MsmStats {
+-+        gfx_ns: u64,
+-+        mem_bytes: u64,
+-+    },
+-     V3dStats {
+-         gfx_ns: u64,
+-         mem_bytes: u64,
+-@@ -69,6 +73,7 @@ impl GpuUsageStats {
+-         match (self, old) {
+-             (Self::AmdgpuStats { gfx_ns: a, .. }, Self::AmdgpuStats { gfx_ns: b, .. })
+-             | (Self::I915Stats { gfx_ns: a, .. }, Self::I915Stats { gfx_ns: b, .. })
+-+            | (Self::MsmStats { gfx_ns: a, .. }, Self::MsmStats { gfx_ns: b, .. })
+-             | (Self::V3dStats { gfx_ns: a, .. }, Self::V3dStats { gfx_ns: b, .. }) => {
+-                 ns_delta_to_usage_fraction(*a, *b, time_delta_ms)
+-             }
+-@@ -163,6 +168,7 @@ impl GpuUsageStats {
+-         match self {
+-             Self::AmdgpuStats { mem_bytes, .. }
+-             | Self::NvidiaStats { mem_bytes, .. }
+-+            | Self::MsmStats { mem_bytes, .. }
+-             | Self::V3dStats { mem_bytes, .. }
+-             | Self::XeStats { mem_bytes, .. } => Some(*mem_bytes),
+-             Self::I915Stats { .. } => None,
+-@@ -223,6 +229,19 @@ impl GpuUsageStats {
+-                 dec_percentage: *a_dec.max(b_dec),
+-                 mem_bytes: *a_mem.max(b_mem),
+-             },
+-+            (
+-+                Self::MsmStats {
+-+                    gfx_ns: a_gfx,
+-+                    mem_bytes: a_mem,
+-+                },
+-+                Self::MsmStats {
+-+                    gfx_ns: b_gfx,
+-+                    mem_bytes: b_mem,
+-+                },
+-+            ) => Self::MsmStats {
+-+                gfx_ns: *a_gfx.max(b_gfx),
+-+                mem_bytes: *a_mem.max(b_mem),
+-+            },
+-             (
+-                 Self::V3dStats {
+-                     gfx_ns: a_gfx,
+ -- 
+ 2.43.0
+ 
+--- a/0003-gpu-Add-msm-Adreno-device-telemetry.patch
++++ b/0003-gpu-Add-msm-Adreno-device-telemetry.patch
+@@ -1,6 +1,6 @@
+-From 15005c18b331111584822f741e50021a1590238e Mon Sep 17 00:00:00 2001
++From 8a3e0072653130ab9cf0a29c7bc1d3aa942cf521 Mon Sep 17 00:00:00 2001
+ From: yzddmr6 <46088090+yzddmr6@users.noreply.github.com>
+-Date: Sat, 24 Oct 2026 22:44:31 +0800
++Date: Sat, 24 Oct 2026 22:45:16 +0800
+ Subject: [PATCH 3/4] gpu: Add msm Adreno device telemetry
+ 
+ Recognize msm, msm_dpu and adreno DRM devices. Locate the Adreno
+@@ -20,16 +20,47 @@
+ 
+ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+ ---
+- src/devices/gpu/mod.rs |  22 ++++
+- src/devices/gpu/msm.rs | 269 +++++++++++++++++++++++++++++++++++++++++
+- src/ui/pages/gpu.rs    |  12 ++
+- 3 files changed, 303 insertions(+)
+- create mode 100644 src/devices/gpu/msm.rs
+-
+-diff --git a/src/devices/gpu/mod.rs b/src/devices/gpu/mod.rs
+-index 1bba8c1..cf993ac 100644
+---- a/src/devices/gpu/mod.rs
+-+++ b/src/devices/gpu/mod.rs
++ src/ui/pages/gpu.rs  |  13 +++
++ src/utils/gpu/mod.rs |  22 ++++
++ src/utils/gpu/msm.rs | 266 +++++++++++++++++++++++++++++++++++++++++++
++ 3 files changed, 301 insertions(+)
++ create mode 100644 src/utils/gpu/msm.rs
++
++diff --git a/src/ui/pages/gpu.rs b/src/ui/pages/gpu.rs
++index 396ad2a..561a2fb 100644
++--- a/src/ui/pages/gpu.rs
+++++ b/src/ui/pages/gpu.rs
++@@ -285,6 +285,7 @@ impl ResGPU {
++             total_vram,
++             used_vram,
++             clock_speed,
+++            clock_speed_max,
++             vram_speed,
++             temperature,
++             power_usage,
++@@ -397,6 +398,18 @@ impl ResGPU {
++             imp.gpu_clockspeed.set_subtitle(&i18n("N/A"));
++         }
++ 
+++        imp.gpu_clockspeed.set_tooltip_text(
+++            clock_speed_max
+++                .map(|frequency| {
+++                    format!(
+++                        "{}: {}",
+++                        i18n("Max Frequency"),
+++                        convert_frequency(frequency)
+++                    )
+++                })
+++                .as_deref(),
+++        );
+++
++         if let Some(vram_clockspeed) = vram_speed {
++             imp.vram_clockspeed
++                 .set_subtitle(&convert_frequency(*vram_clockspeed));
++diff --git a/src/utils/gpu/mod.rs b/src/utils/gpu/mod.rs
++index 521fed6..16261ee 100644
++--- a/src/utils/gpu/mod.rs
+++++ b/src/utils/gpu/mod.rs
+ @@ -1,5 +1,6 @@
+  mod amd;
+  mod intel;
+@@ -88,20 +119,20 @@
+      fn power_cap(&self) -> Result<f64>;
+      fn power_cap_max(&self) -> Result<f64>;
+ @@ -212,6 +221,7 @@ impl std::ops::Deref for Gpu {
+-             Self::Intel(gpu) => gpu,
+-             Self::Nvidia(gpu) => gpu,
+-             Self::V3d(gpu) => gpu,
+-+            Self::Msm(gpu) => gpu,
+-             Self::Other(gpu) => gpu,
++             Gpu::Intel(gpu) => gpu,
++             Gpu::Nvidia(gpu) => gpu,
++             Gpu::V3d(gpu) => gpu,
+++            Gpu::Msm(gpu) => gpu,
++             Gpu::Other(gpu) => gpu,
+          }
+      }
+-@@ -325,6 +335,18 @@ impl Gpu {
++@@ -327,6 +337,18 @@ impl Gpu {
+                  )),
+                  "NVIDIA",
+              )
+ +        } else if msm::DRIVER_NAMES.contains(&driver.as_str()) {
+ +            (
+-+                Self::Msm(MsmGpu::new(
+++                Gpu::Msm(MsmGpu::new(
+ +                    device,
+ +                    gpu_identifier,
+ +                    driver,
+@@ -113,22 +144,19 @@
+ +            )
+          } else if driver == "v3d" {
+              (
+-                 Self::V3d(V3dGpu::new(
+-diff --git a/src/devices/gpu/msm.rs b/src/devices/gpu/msm.rs
++                 Gpu::V3d(V3dGpu::new(
++diff --git a/src/utils/gpu/msm.rs b/src/utils/gpu/msm.rs
+ new file mode 100644
+-index 0000000..0e973c7
++index 0000000..38cb8e8
+ --- /dev/null
+-+++ b/src/devices/gpu/msm.rs
+-@@ -0,0 +1,269 @@
+++++ b/src/utils/gpu/msm.rs
++@@ -0,0 +1,266 @@
+ +use anyhow::{Context, Result, bail};
+ +use process_data::gpu_usage::GpuIdentifier;
+ +
+ +use std::path::{Path, PathBuf};
+ +
+-+use crate::{
+-+    devices::pci::Device,
+-+    utils::{read_parsed, thermal},
+-+};
+++use crate::utils::{pci::Device, read_parsed, thermal};
+ +
+ +use super::GpuImpl;
+ +
+@@ -389,36 +417,6 @@
+ +        std::fs::remove_dir_all(root).unwrap();
+ +    }
+ +}
+-diff --git a/src/ui/pages/gpu.rs b/src/ui/pages/gpu.rs
+-index 716c85a..b46e1f2 100644
+---- a/src/ui/pages/gpu.rs
+-+++ b/src/ui/pages/gpu.rs
+-@@ -289,6 +289,7 @@ impl ResGPU {
+-             total_vram,
+-             used_vram,
+-             clock_speed,
+-+            clock_speed_max,
+-             vram_speed,
+-             temperature,
+-             power_usage,
+-@@ -352,6 +353,17 @@ impl ResGPU {
+-         imp.power_usage.set_subtitle(&power_string);
+- 
+-         set_subtitle_converted_maybe(*clock_speed, convert_frequency, &imp.gpu_clockspeed);
+-+        imp.gpu_clockspeed.set_tooltip_text(
+-+            clock_speed_max
+-+                .map(|frequency| {
+-+                    format!(
+-+                        "{}: {}",
+-+                        i18n("Max Frequency"),
+-+                        convert_frequency(frequency)
+-+                    )
+-+                })
+-+                .as_deref(),
+-+        );
+- 
+-         set_subtitle_converted_maybe(*vram_speed, convert_frequency, &imp.vram_clockspeed);
+- 
+ -- 
+ 2.43.0
+ 
+--- a/0004-battery-Show-temperature-when-available.patch
++++ b/0004-battery-Show-temperature-when-available.patch
+@@ -1,7 +1,7 @@
+-From 7dbafe2cb0d3ad063f501e9c0d53ba1ebcfc700e Mon Sep 17 00:00:00 2001
++From 5178068d6e3f62951cb71455475b81ba98a94591 Mon Sep 17 00:00:00 2001
+ From: yzddmr6 <46088090+yzddmr6@users.noreply.github.com>
+-Date: Sat, 24 Oct 2026 22:44:32 +0800
+-Subject: [PATCH 4/4] battery: Show temperature when available
++Date: Sat, 24 Oct 2026 22:45:16 +0800
++Subject: [PATCH] battery: Show temperature when available
+ 
+ Read power_supply temperatures in tenths of a degree Celsius for each
+ battery on every refresh. Use the existing temperature unit preference
+@@ -13,9 +13,9 @@
+ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+ ---
+  data/resources/ui/pages/battery.ui | 10 ++++++++++
+- src/devices/battery.rs             | 30 ++++++++++++++++++++++++++++++
+- src/ui/pages/battery.rs            | 15 ++++++++++++++-
+- 3 files changed, 54 insertions(+), 1 deletion(-)
++ src/ui/pages/battery.rs            | 11 ++++++++++-
++ src/utils/battery.rs               | 30 ++++++++++++++++++++++++++++++
++ 3 files changed, 50 insertions(+), 1 deletion(-)
+ 
+ diff --git a/data/resources/ui/pages/battery.ui b/data/resources/ui/pages/battery.ui
+ index ac134f7..77c2e2a 100644
+@@ -38,11 +38,54 @@
+                    </object>
+                  </child>
+                  <child>
+-diff --git a/src/devices/battery.rs b/src/devices/battery.rs
+-index bb89ddf..758b4cb 100644
+---- a/src/devices/battery.rs
+-+++ b/src/devices/battery.rs
+-@@ -24,6 +24,7 @@ pub struct BatteryData {
++diff --git a/src/ui/pages/battery.rs b/src/ui/pages/battery.rs
++index 19a7727..dcf9495 100644
++--- a/src/ui/pages/battery.rs
+++++ b/src/ui/pages/battery.rs
++@@ -6,7 +6,7 @@ use std::fmt::Write;
++ use crate::config::PROFILE;
++ use crate::i18n::i18n;
++ use crate::utils::battery::BatteryData;
++-use crate::utils::units::{convert_energy, convert_power};
+++use crate::utils::units::{convert_energy, convert_power, convert_temperature};
++ 
++ pub const TAB_ID_PREFIX: &str = "battery";
++ 
++@@ -34,6 +34,8 @@ mod imp {
++         #[template_child]
++         pub health: TemplateChild<adw::ActionRow>,
++         #[template_child]
+++        pub temperature: TemplateChild<adw::ActionRow>,
+++        #[template_child]
++         pub design_capacity: TemplateChild<adw::ActionRow>,
++         #[template_child]
++         pub charge_cycles: TemplateChild<adw::ActionRow>,
++@@ -90,6 +92,7 @@ mod imp {
++                 charge: Default::default(),
++                 power_usage: Default::default(),
++                 health: Default::default(),
+++                temperature: Default::default(),
++                 design_capacity: Default::default(),
++                 charge_cycles: Default::default(),
++                 technology: Default::default(),
++@@ -295,6 +298,12 @@ impl ResBattery {
++ 
++         self.set_tab_usage_string(usage_string);
++ 
+++        imp.temperature
+++            .set_visible(battery_data.temperature.is_ok());
+++        if let Ok(temperature) = battery_data.temperature {
+++            imp.temperature.set_subtitle(&convert_temperature(temperature));
+++        }
+++
++         if let Ok(health) = battery_data.health {
++             imp.health
++                 .set_subtitle(&format!("{} %", (health * 100.0).round()));
++diff --git a/src/utils/battery.rs b/src/utils/battery.rs
++index cef5831..0b499dc 100644
++--- a/src/utils/battery.rs
+++++ b/src/utils/battery.rs
++@@ -25,6 +25,7 @@ pub struct BatteryData {
+      pub health: Result<f64>,
+      pub state: Result<State>,
+      pub charge_cycles: Result<usize>,
+@@ -50,7 +93,7 @@
+  }
+  
+  impl BatteryData {
+-@@ -38,6 +39,7 @@ impl BatteryData {
++@@ -39,6 +40,7 @@ impl BatteryData {
+          let health = inner.health();
+          let state = inner.state();
+          let charge_cycles = inner.charge_cycles();
+@@ -58,7 +101,7 @@
+  
+          let battery_data = Self {
+              inner,
+-@@ -46,6 +48,7 @@ impl BatteryData {
++@@ -47,6 +49,7 @@ impl BatteryData {
+              health,
+              state,
+              charge_cycles,
+@@ -66,7 +109,7 @@
+          };
+  
+          trace!(
+-@@ -326,6 +329,13 @@ impl Battery {
++@@ -328,6 +331,13 @@ impl Battery {
+          State::from_str(&read_parsed::<String>(self.sysfs_path.join("status"))?)
+      }
+  
+@@ -80,7 +123,7 @@
+      pub fn charge_cycles(&self) -> Result<usize> {
+          read_parsed(self.sysfs_path.join("cycle_count"))
+              .context("unable to parse cycle_count sysfs file")
+-@@ -337,6 +347,26 @@ mod test {
++@@ -339,6 +349,26 @@ mod test {
+      use super::Battery;
+      use pretty_assertions::assert_eq;
+  
+@@ -107,53 +150,6 @@
+      #[test]
+      fn dont_untangle_untangled_string() {
+          let untangled_string = String::from("This is a normal string");
+-diff --git a/src/ui/pages/battery.rs b/src/ui/pages/battery.rs
+-index e7d40dc..358fd28 100644
+---- a/src/ui/pages/battery.rs
+-+++ b/src/ui/pages/battery.rs
+-@@ -8,7 +8,9 @@ use crate::devices::battery::BatteryData;
+- use crate::ui::set_subtitle_converted_maybe;
+- use crate::ui::widgets::stack_sidebar_item::UsageLabels;
+- use crate::utils::i18n::i18n;
+--use crate::utils::units::{convert_charge_cycles, convert_energy, convert_fraction, convert_power};
+-+use crate::utils::units::{
+-+    convert_charge_cycles, convert_energy, convert_fraction, convert_power, convert_temperature,
+-+};
+- 
+- pub const TAB_ID_PREFIX: &str = "battery";
+- 
+-@@ -36,6 +38,8 @@ mod imp {
+-         #[template_child]
+-         pub health: TemplateChild<adw::ActionRow>,
+-         #[template_child]
+-+        pub temperature: TemplateChild<adw::ActionRow>,
+-+        #[template_child]
+-         pub design_capacity: TemplateChild<adw::ActionRow>,
+-         #[template_child]
+-         pub charge_cycles: TemplateChild<adw::ActionRow>,
+-@@ -92,6 +96,7 @@ mod imp {
+-                 charge: Default::default(),
+-                 power_usage: Default::default(),
+-                 health: Default::default(),
+-+                temperature: Default::default(),
+-                 design_capacity: Default::default(),
+-                 charge_cycles: Default::default(),
+-                 technology: Default::default(),
+-@@ -286,6 +291,14 @@ impl ResBattery {
+- 
+-         self.set_tab_usage_labels(usage_labels);
+- 
+-+        imp.temperature
+-+            .set_visible(battery_data.temperature.is_ok());
+-+        set_subtitle_converted_maybe(
+-+            battery_data.temperature.ok(),
+-+            convert_temperature,
+-+            &imp.temperature,
+-+        );
+-+
+-         set_subtitle_converted_maybe(
+-             battery_data.health.ok(),
+-             |fraction| convert_fraction(fraction, true),
+ -- 
+ 2.43.0
+ 
+--- a/0005-temperature-Add-a-grouped-hwmon-sensor-view.patch
++++ b/0005-temperature-Add-a-grouped-hwmon-sensor-view.patch
+@@ -1,4 +1,4 @@
+-From 357f4c55d4ce83ec803d0800ecaafe240b64f2f9 Mon Sep 17 00:00:00 2001
++From cb2794a5543373c165cc956090b3ecb2d2bec14e Mon Sep 17 00:00:00 2001
+ From: yzddmr6 <46088090+yzddmr6@users.noreply.github.com>
+ Date: Sun, 25 Oct 2026 13:56:50 +0800
+ Subject: [PATCH] temperature: Add a grouped hwmon sensor view
+@@ -16,31 +16,55 @@
+ 
+ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+ ---
+- po/POTFILES.in              |   1 +
+- src/ui/pages/mod.rs         |   3 +
+- src/ui/pages/temperature.rs | 227 ++++++++++++++++++++++++++++++++++++
+- src/ui/widgets/graph.rs     |  13 ++-
+- src/ui/window.rs            |  18 +++
+- src/utils/mod.rs            |   2 +
+- src/utils/temperature.rs    | 185 +++++++++++++++++++++++++++++
+- 7 files changed, 447 insertions(+), 2 deletions(-)
++ data/resources/icons/thermometer-symbolic.svg |   2 +
++ data/resources/resources.gresource.xml        |   1 +
++ po/POTFILES.in                                |   2 +
++ src/ui/pages/mod.rs                           |   3 +
++ src/ui/pages/temperature.rs                   | 226 ++++++++++++++++++
++ src/ui/widgets/graph.rs                       |  13 +-
++ src/ui/window.rs                              |  18 ++
++ src/utils/mod.rs                              |   2 +
++ src/utils/temperature.rs                      | 185 ++++++++++++++
++ 9 files changed, 450 insertions(+), 2 deletions(-)
++ create mode 100644 data/resources/icons/thermometer-symbolic.svg
+  create mode 100644 src/ui/pages/temperature.rs
+  create mode 100644 src/utils/temperature.rs
+ 
++diff --git a/data/resources/icons/thermometer-symbolic.svg b/data/resources/icons/thermometer-symbolic.svg
++new file mode 100644
++index 0000000..ad39db5
++--- /dev/null
+++++ b/data/resources/icons/thermometer-symbolic.svg
++@@ -0,0 +1,2 @@
+++<?xml version="1.0" encoding="UTF-8"?>
+++<svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 0 16 16" width="16px"><path d="m 8 0 c -1.644531 0 -3 1.355469 -3 3 v 6.363281 c -0.621094 0.707031 -1 1.628907 -1 2.636719 c 0 2.199219 1.800781 4 4 4 s 4 -1.800781 4 -4 c 0 -1.007812 -0.378906 -1.929688 -1 -2.636719 v -6.363281 c 0 -1.644531 -1.355469 -3 -3 -3 z m 0 2 c 0.570312 0 1 0.429688 1 1 v 1 h -1 v 1 h 1 v 1 h -1 v 1 h 1 v 1 h -1 v 1 h 1 v 1.269531 c 0.617188 0.355469 1 1.015625 1 1.730469 c 0 1.105469 -0.894531 2 -2 2 s -2 -0.894531 -2 -2 c 0.003906 -0.710938 0.382812 -1.371094 1 -1.726562 v -7.273438 c 0 -0.570312 0.429688 -1 1 -1 z m 0 9 c -0.550781 0 -1 0.449219 -1 1 s 0.449219 1 1 1 s 1 -0.449219 1 -1 s -0.449219 -1 -1 -1 z m 0 0" fill="#222222"/></svg>
++diff --git a/data/resources/resources.gresource.xml b/data/resources/resources.gresource.xml
++index b4f4247..44cd6d1 100644
++--- a/data/resources/resources.gresource.xml
+++++ b/data/resources/resources.gresource.xml
++@@ -2,6 +2,7 @@
++ <gresources>
++   <gresource prefix="/net/nokyan/Resources/icons/scalable/actions/">
++     <file preprocess="xml-stripblanks" alias="app-symbolic.svg">icons/app-symbolic.svg</file>
+++    <file preprocess="xml-stripblanks" alias="thermometer-symbolic.svg">icons/thermometer-symbolic.svg</file>
++     <file preprocess="xml-stripblanks" alias="battery-symbolic.svg">icons/battery-symbolic.svg</file>
++     <file preprocess="xml-stripblanks" alias="bluetooth-symbolic.svg">icons/bluetooth-symbolic.svg</file>
++     <file preprocess="xml-stripblanks" alias="bridge-symbolic.svg">icons/bridge-symbolic.svg</file>
+ diff --git a/po/POTFILES.in b/po/POTFILES.in
+-index ad81e15..906c94d 100644
++index 0d7ee78..6fbf74a 100644
+ --- a/po/POTFILES.in
+ +++ b/po/POTFILES.in
+-@@ -46,3 +46,4 @@ src/ui/pages/processes/mod.rs
+- src/ui/pages/processes/process_entry.rs
+- src/ui/window.rs
++@@ -46,3 +46,5 @@ src/utils/link/mod.rs
++ src/utils/network.rs
++ src/utils/npu/mod.rs
+  src/utils/units.rs
+++
+ +src/ui/pages/temperature.rs
+ diff --git a/src/ui/pages/mod.rs b/src/ui/pages/mod.rs
+-index e369afd..ee9b69c 100644
++index 7d15025..2aa79d7 100644
+ --- a/src/ui/pages/mod.rs
+ +++ b/src/ui/pages/mod.rs
+-@@ -177,3 +177,6 @@ pub static NICE_TO_LABEL: LazyLock<HashMap<Niceness, (String, u32)>> = LazyLock:
++@@ -64,3 +64,6 @@ pub static NICE_TO_LABEL: LazyLock<HashMap<Niceness, (String, u32)>> = LazyLock:
+  
+      hash_map
+  });
+@@ -49,19 +73,18 @@
+ +const TEMPERATURE_PRIMARY_ORD: u32 = 9;
+ diff --git a/src/ui/pages/temperature.rs b/src/ui/pages/temperature.rs
+ new file mode 100644
+-index 0000000..4e736ce
++index 0000000..92213bb
+ --- /dev/null
+ +++ b/src/ui/pages/temperature.rs
+-@@ -0,0 +1,227 @@
++@@ -0,0 +1,226 @@
+ +use adw::{prelude::*, subclass::prelude::*};
+ +use gtk::glib;
+ +use std::collections::HashMap;
+ +use std::path::PathBuf;
+ +
+-+use crate::config::DEVLOPMENT_BUILD;
+++use crate::config::PROFILE;
+++use crate::i18n::i18n;
+ +use crate::ui::widgets::graph::ResGraph;
+-+use crate::ui::widgets::stack_sidebar_item::UsageLabels;
+-+use crate::utils::i18n::i18n;
+ +use crate::utils::temperature::{TemperatureData, TemperatureSensor};
+ +use crate::utils::units::convert_temperature;
+ +
+@@ -92,7 +115,7 @@
+ +        pub(super) rows: RefCell<Vec<SensorRow>>,
+ +
+ +        #[property(get)]
+-+        uses_meter: Cell<bool>,
+++        uses_progress_bar: Cell<bool>,
+ +
+ +        #[property(get)]
+ +        main_graph_color: glib::Bytes,
+@@ -109,8 +132,8 @@
+ +        #[property(get = Self::tab_detail_string, set = Self::set_tab_detail_string, type = glib::GString)]
+ +        tab_detail_string: Cell<glib::GString>,
+ +
+-+        #[property(get, set, type = UsageLabels)]
+-+        tab_usage_labels: RefCell<UsageLabels>,
+++        #[property(get = Self::tab_usage_string, set = Self::set_tab_usage_string, type = glib::GString)]
+++        tab_usage_string: Cell<glib::GString>,
+ +
+ +        #[property(get = Self::tab_id, set = Self::set_tab_id, type = glib::GString)]
+ +        tab_id: Cell<glib::GString>,
+@@ -126,7 +149,7 @@
+ +    }
+ +
+ +    impl ResTemperatures {
+-+        gstring_getter_setter!(tab_name, tab_detail_string, tab_id);
+++        gstring_getter_setter!(tab_name, tab_detail_string, tab_usage_string, tab_id);
+ +    }
+ +
+ +    impl Default for ResTemperatures {
+@@ -135,7 +158,7 @@
+ +                page: adw::PreferencesPage::new(),
+ +                groups: Default::default(),
+ +                rows: Default::default(),
+-+                uses_meter: Cell::new(false),
+++                uses_progress_bar: Cell::new(false),
+ +                main_graph_color: glib::Bytes::from_static(
+ +                    &super::ResTemperatures::MAIN_GRAPH_COLOR,
+ +                ),
+@@ -144,7 +167,7 @@
+ +                tab_name: Cell::new(glib::GString::from(i18n("Temperature"))),
+ +                tab_detail_string: Cell::new(glib::GString::new()),
+ +                tab_id: Cell::new(glib::GString::from("temperature")),
+-+                tab_usage_labels: Default::default(),
+++                tab_usage_string: Cell::new(glib::GString::new()),
+ +                graph_locked_max_y: Cell::new(true),
+ +                primary_ord: Cell::new(TEMPERATURE_PRIMARY_ORD),
+ +                secondary_ord: Default::default(),
+@@ -166,7 +189,7 @@
+ +            obj.set_child(Some(&self.page));
+ +
+ +            // Devel Profile
+-+            if DEVLOPMENT_BUILD {
+++            if PROFILE == "Devel" {
+ +                obj.add_css_class("devel");
+ +            }
+ +        }
+@@ -281,7 +304,7 @@
+ +    }
+ +}
+ diff --git a/src/ui/widgets/graph.rs b/src/ui/widgets/graph.rs
+-index 7e8f8cb..8813e03 100644
++index 718307f..d2d86e2 100644
+ --- a/src/ui/widgets/graph.rs
+ +++ b/src/ui/widgets/graph.rs
+ @@ -105,12 +105,21 @@ mod imp {
+@@ -309,21 +332,26 @@
+  
+              if SETTINGS.show_graph_grids() {
+ diff --git a/src/ui/window.rs b/src/ui/window.rs
+-index c3f9c95..72a4eee 100644
++index ac791c8..8533d63 100644
+ --- a/src/ui/window.rs
+ +++ b/src/ui/window.rs
+-@@ -25,8 +25,10 @@ use crate::ui::pages::applications::ResApplications;
++@@ -17,6 +17,7 @@ use crate::ui::pages::applications::ResApplications;
+  use crate::ui::pages::battery::ResBattery;
+  use crate::ui::pages::drive::ResDrive;
+  use crate::ui::pages::processes::ResProcesses;
+ +use crate::ui::pages::temperature::ResTemperatures;
+- use crate::utils::i18n::{i18n, i18n_f, ni18n_f};
++ use crate::utils::app::AppsContext;
++ use crate::utils::battery::{Battery, BatteryData};
++ use crate::utils::cpu::{self, CpuData};
++@@ -27,6 +28,7 @@ use crate::utils::network::{NetworkData, NetworkInterface};
++ use crate::utils::npu::{Npu, NpuData};
++ use crate::utils::process::{Process, ProcessAction};
+  use crate::utils::settings::SETTINGS;
+ +use crate::utils::temperature::{TemperatureData, temperatures};
+  
+  use super::pages::applications;
+  use super::pages::gpu::ResGPU;
+-@@ -100,6 +102,8 @@ mod imp {
++@@ -101,6 +103,8 @@ mod imp {
+  
+          pub network_pages: RefCell<HashMap<PathBuf, adw::ToolbarView>>,
+  
+@@ -332,7 +360,7 @@
+          pub battery_pages: RefCell<HashMap<PathBuf, adw::ToolbarView>>,
+  
+          pub gpu_pages: RefCell<HashMap<GpuIdentifier, (Gpu, adw::ToolbarView)>>,
+-@@ -123,6 +127,7 @@ mod imp {
++@@ -124,6 +128,7 @@ mod imp {
+                  drive_pages: RefCell::default(),
+                  network_pages: RefCell::default(),
+                  battery_pages: RefCell::default(),
+@@ -340,7 +368,7 @@
+                  split_view: TemplateChild::default(),
+                  resources_sidebar: TemplateChild::default(),
+                  content_stack: TemplateChild::default(),
+-@@ -217,6 +222,7 @@ struct RefreshData {
++@@ -221,6 +226,7 @@ struct RefreshData {
+      network_data: Vec<NetworkData>,
+      battery_paths: Vec<PathBuf>,
+      battery_data: Vec<BatteryData>,
+@@ -348,7 +376,7 @@
+      process_data: Vec<ProcessData>,
+  }
+  
+-@@ -259,6 +265,12 @@ impl MainWindow {
++@@ -263,6 +269,12 @@ impl MainWindow {
+              self.init_gpu_pages(&gpus);
+          }
+  
+@@ -361,7 +389,7 @@
+          imp.resources_sidebar.set_stack(&imp.content_stack);
+  
+          if ARGS.disable_process_monitoring {
+-@@ -606,6 +618,8 @@ impl MainWindow {
++@@ -603,6 +615,8 @@ impl MainWindow {
+              }
+          }
+  
+@@ -370,7 +398,7 @@
+          let refresh_data = RefreshData {
+              cpu_data,
+              mem_data,
+-@@ -617,6 +631,7 @@ impl MainWindow {
++@@ -614,6 +628,7 @@ impl MainWindow {
+              network_data,
+              battery_paths,
+              battery_data,
+@@ -378,7 +406,7 @@
+              process_data,
+          };
+  
+-@@ -643,6 +658,7 @@ impl MainWindow {
++@@ -640,6 +655,7 @@ impl MainWindow {
+              network_data,
+              battery_paths,
+              battery_data,
+@@ -386,7 +414,7 @@
+              process_data,
+          } = refresh_data;
+  
+-@@ -814,6 +830,8 @@ impl MainWindow {
++@@ -811,6 +827,8 @@ impl MainWindow {
+              page.refresh_page(battery_data);
+          }
+  
+@@ -396,13 +424,13 @@
+      }
+  
+ diff --git a/src/utils/mod.rs b/src/utils/mod.rs
+-index d2e1af5..5e15216 100644
++index 1531afe..4a0b5fc 100644
+ --- a/src/utils/mod.rs
+ +++ b/src/utils/mod.rs
+-@@ -419,3 +419,5 @@ mod test {
++@@ -401,3 +401,5 @@ mod test {
++         assert_eq!(maybe, f64::default());
++     }
+  }
+- 
+- pub(crate) mod thermal;
+ +
+ +pub mod temperature;
+ diff --git a/src/utils/temperature.rs b/src/utils/temperature.rs

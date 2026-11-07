@@ -1,0 +1,170 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH] power: qcom-battmgr: desktop automatic OTG sessions
+
+Separate boot-gated repeatable ownership from the unchanged manual lease.
+
+---
+
+diff --git a/drivers/power/supply/qcom_battmgr.c b/drivers/power/supply/qcom_battmgr.c
+--- a/drivers/power/supply/qcom_battmgr.c
++++ b/drivers/power/supply/qcom_battmgr.c
+@@ -23,11 +23,17 @@
+ #include <linux/moduleparam.h>
+ #include "oneplus13-otg-supply-read.h"
+ #include "oneplus13-otg-supply-lease.h"
++#include "oneplus13-otg-auto-policy.h"
+ 
+ /* Separate GET-only probe: never enables the supply or an old lease. */
+ static bool oneplus13_otg_supply_read;
+ module_param_named(oneplus13_otg_supply_read, oneplus13_otg_supply_read, bool, 0400);
+ MODULE_PARM_DESC(oneplus13_otg_supply_read, "Manual phone-only GET24/GET64; no supply setters");
++
++static bool oneplus13_otg_auto;
++module_param_named(oneplus13_otg_auto, oneplus13_otg_auto, bool, 0400);
++MODULE_PARM_DESC(oneplus13_otg_auto,
++                 "Desktop automatic OTG owner with event generation and 15s heartbeat watchdog");
+ 
+ /* Manual one-shot VBUS experiment; never starts without an explicit sysfs store. */
+ static bool oneplus13_otg_supply_lease;
+@@ -363,6 +369,14 @@
+ 	unsigned int op13_otg_value;
+ 	struct op13_otg_lease op13_otg_lease;
+ 	struct op13_otg_supply_lease op13_otg_supply_lease;
++	struct work_struct op13_otg_auto_work;
++	unsigned int op13_otg_auto_generation;
++	unsigned int op13_otg_auto_start_generation;
++	bool op13_otg_auto_source;
++	bool op13_otg_auto_started;
++	bool op13_otg_auto_notifications_ready;
++	bool op13_otg_auto_starting;
++	bool op13_otg_auto_detach_pending;
+ 	struct delayed_work op13_otg_restore_work;
+ 	struct delayed_work op13_otg_supply_restore_work;
+ 	u64 op13_otg_deadline;
+@@ -1650,6 +1664,9 @@
+ 	return match;
+ }
+ 
++static bool op13_otg_auto_notification(struct qcom_battmgr *b,
++                                      const void *data, size_t len);
++
+ static void qcom_battmgr_callback(const void *data, size_t len, void *priv)
+ {
+ 	const struct pmic_glink_hdr *hdr = data;
+@@ -1660,6 +1677,8 @@
+ 	if (!data || len < sizeof(*hdr))
+ 		return;
+ 	opcode = le32_to_cpu(hdr->opcode);
++	if (op13_otg_auto_notification(battmgr, data, len))
++		return;
+ 
+ 	/* Do not let unrelated power responses acknowledge this optional read.
+ 	 * Read-only vendor OTG properties use the existing client/serialization.
+@@ -1677,7 +1696,7 @@
+ 		matched = len == 24 ?
+ 			op13_otg_decode(data, 24, battmgr->op13_otg_opcode,
+ 					 battmgr->op13_otg_property, &value) : 0;
+-		if (!matched && oneplus13_otg_supply_lease && op13_otg_machine())
++		if (!matched && (oneplus13_otg_supply_lease || oneplus13_otg_auto) && op13_otg_machine())
+ 			matched = op13_otg_supply_decode(data, len,
+ 				battmgr->op13_otg_opcode, battmgr->op13_otg_property, &value);
+ 		if (matched) {
+@@ -1697,7 +1716,7 @@
+ 	    len >= 16 && (opcode == OP13_OTG_GET || opcode == OP13_OTG_SET) &&
+ 	    (op13_otg_le32((const unsigned char *)data + 12) == OP13_OTG_AP_ENABLE ||
+ 	     op13_otg_le32((const unsigned char *)data + 12) == OP13_OTG_SWITCH ||
+-	     ((oneplus13_otg_supply_read || oneplus13_otg_supply_lease) &&
++	     ((oneplus13_otg_supply_read || oneplus13_otg_supply_lease || oneplus13_otg_auto) &&
+ 	      (op13_otg_le32((const unsigned char *)data + 12) == OP13_OTG_VBUS_ENABLE ||
+ 	       op13_otg_le32((const unsigned char *)data + 12) == OP13_OTG_BOOST_CURRENT))))
+ 		return;
+@@ -1808,12 +1827,16 @@
+ 	};
+ }
+ 
++#include "oneplus13-otg-auto-kernel.h"
++
+ static void op13_otg_supply_restore_worker(struct work_struct *work)
+ {
+ 	struct qcom_battmgr *battmgr = container_of(to_delayed_work(work),
+ 		struct qcom_battmgr, op13_otg_supply_restore_work);
+ 	struct op13_otg_supply_io io = op13_otg_supply_io(battmgr);
+ 
++	if (op13_otg_auto_watchdog_worker(battmgr))
++		return;
+ 	mutex_lock(&battmgr->lock);
+ 	if (battmgr->op13_otg_supply_lease.state == OP13_OTG_SUPPLY_ACTIVE ||
+ 	    battmgr->op13_otg_supply_lease.state == OP13_OTG_SUPPLY_ARMED)
+@@ -1864,7 +1887,7 @@
+ #ifdef MODULE
+ 	return -EOPNOTSUPP;
+ #endif
+-	if (!oneplus13_otg_supply_lease || !op13_otg_machine())
++	if (!oneplus13_otg_supply_lease || oneplus13_otg_auto || !op13_otg_machine())
+ 		return -EOPNOTSUPP;
+ 	if (!sysfs_streq(buf, "arm") && !sysfs_streq(buf, "start") &&
+ 	    !sysfs_streq(buf, "restore"))
+@@ -1928,6 +1951,7 @@
+ 	       oneplus13_otg_supply_lease_store);
+ 
+ static struct attribute *op13_otg_attrs[] = {
++	&dev_attr_oneplus13_otg_auto.attr,
+ 	&dev_attr_oneplus13_otg_ap_enable.attr,
+ 	&dev_attr_oneplus13_otg_switch.attr,
+ 	&dev_attr_oneplus13_otg_lease.attr,
+@@ -1948,6 +1972,8 @@
+ 	if (attr == &dev_attr_oneplus13_otg_lease.attr &&
+ 	    !oneplus13_otg_lease_enabled)
+ 		return 0;
++	if (attr == &dev_attr_oneplus13_otg_auto.attr && !oneplus13_otg_auto)
++		return 0;
+ 	if (attr == &dev_attr_oneplus13_otg_supply_lease.attr &&
+ 	    !oneplus13_otg_supply_lease)
+ 		return 0;
+@@ -1975,6 +2001,7 @@
+ 		return;
+ 	}
+ 	ret = qcom_battmgr_request(battmgr, &req, sizeof(req));
++	WRITE_ONCE(battmgr->op13_otg_auto_notifications_ready, !ret);
+ 	mutex_unlock(&battmgr->lock);
+ 	if (ret)
+ 		dev_err(battmgr->dev, "failed to request power notifications\n");
+@@ -1994,6 +2021,7 @@
+ 		if (READ_ONCE(battmgr->service_up) ||
+ 		    READ_ONCE(battmgr->op13_otg_pending))
+ 			WRITE_ONCE(battmgr->op13_otg_poisoned, true);
++		WRITE_ONCE(battmgr->op13_otg_auto_notifications_ready, false);
+ 		WRITE_ONCE(battmgr->service_up, false);
+ 	}
+ 	spin_unlock_irqrestore(&battmgr->op13_otg_lock, flags);
+@@ -2095,7 +2123,11 @@
+ 	psy_cfg_supply.supplied_to = qcom_battmgr_battery;
+ 	psy_cfg_supply.num_supplicants = 1;
+ 
++	if (oneplus13_otg_auto &&
++	    (oneplus13_otg_lease_enabled || oneplus13_otg_supply_lease))
++		return dev_err_probe(dev, -EINVAL, "Conflicting OnePlus 13 OTG owners\n");
+ 	INIT_WORK(&battmgr->enable_work, qcom_battmgr_enable_worker);
++	INIT_WORK(&battmgr->op13_otg_auto_work, op13_otg_auto_detach_worker);
+ 	mutex_init(&battmgr->lock);
+ 	init_completion(&battmgr->ack);
+ 	init_completion(&battmgr->op13_otg_ack);
+@@ -2186,7 +2218,7 @@
+ 	if (IS_ERR(battmgr->client))
+ 		return PTR_ERR(battmgr->client);
+ 
+-	if ((oneplus13_otg_lease_enabled || oneplus13_otg_supply_lease) &&
++	if ((oneplus13_otg_lease_enabled || oneplus13_otg_supply_lease || oneplus13_otg_auto) &&
+ 	    op13_otg_machine()) {
+ 		battmgr->op13_otg_wakeup = wakeup_source_register(dev, "oneplus13-otg-lease");
+ 		if (!battmgr->op13_otg_wakeup)
+@@ -2198,6 +2230,9 @@
+ 	ret = devm_add_action_or_reset(dev, op13_otg_supply_remove, battmgr);
+ 	if (ret)
+ 		return ret;
++	ret = devm_add_action_or_reset(dev, op13_otg_auto_remove, battmgr);
++	if (ret)
++		return ret;
+ 	pmic_glink_client_register(battmgr->client);
+ 
+ 	dev_set_drvdata(dev, battmgr);

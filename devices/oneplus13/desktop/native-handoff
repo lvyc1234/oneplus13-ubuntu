@@ -1,0 +1,86 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Data-only library. Never invokes a module loader or the staged helper.
+stage_native_payload() (
+    set -eu
+    source_root=$1
+    target_root=$2
+    release=$3
+    reuse_installed=${4:-0}
+    [ -d "$source_root" ] && [ ! -L "$source_root" ] || return 1
+    [ -d "$target_root" ] && [ ! -L "$target_root" ] || return 1
+    profile=lib/firmware/qcom/sm8750/oneplus/dodge/aa569-spr-v1.bin
+    # The GNOME rootfs uses merged-/usr: /lib is a symlink to usr/lib.
+    # Address the canonical directory without copying through that link.
+    target_profile=usr/$profile
+    helper=sbin/start-native-display
+    candidate=etc/oneplus13-native-candidate
+    manifest=etc/oneplus13-native-handoff
+    count=0
+    for name in "$profile" "$helper" "$candidate" "$manifest"; do
+        if [ -e "$source_root/$name" ] || [ -L "$source_root/$name" ]; then
+            count=$((count + 1))
+            [ -f "$source_root/$name" ] && [ ! -L "$source_root/$name" ] || return 1
+        fi
+    done
+    if [ "$count" = 0 ]; then
+        echo ONEPLUS13_NATIVE_HANDOFF_ABSENT
+        return 0
+    fi
+    [ "$count" = 4 ] || { echo 'Incomplete native payload'; return 1; }
+    [ "$(cat "$source_root/$candidate")" = "$release" ] || return 1
+    [ "$(wc -l < "$source_root/$manifest")" = 4 ] || return 1
+    {
+        IFS= read -r version
+        IFS= read -r pinned_release
+        IFS= read -r profile_sha
+        IFS= read -r helper_sha
+    } < "$source_root/$manifest" || return 1
+    [ "$version" = ONEPLUS13_NATIVE_HANDOFF_V1 ] && [ "$pinned_release" = "$release" ] || return 1
+    for digest in "$profile_sha" "$helper_sha"; do
+        [ "${#digest}" = 64 ] || return 1
+        case "$digest" in *[!0-9a-f]*) return 1 ;; esac
+    done
+    [ "$(stat -c %s "$source_root/$profile")" = 176 ] || return 1
+    [ "$(sha256sum "$source_root/$profile" | cut -d' ' -f1)" = "$profile_sha" ] || return 1
+    [ "$(sha256sum "$source_root/$helper" | cut -d' ' -f1)" = "$helper_sha" ] || return 1
+    # Reject symlinks in destination paths. A persistent boot can reuse the
+    # exact files staged on a prior boot, but its runtime helper must be fresh.
+    for dir in run/oneplus13/native usr/lib/firmware/qcom/sm8750/oneplus/dodge etc; do
+        parent=$dir
+        while [ "$parent" != . ]; do
+            [ ! -L "$target_root/$parent" ] || return 1
+            case "$parent" in */*) parent=${parent%/*} ;; *) parent=. ;; esac
+        done
+    done
+    native=run/oneplus13/native
+    [ ! -e "$target_root/$native" ] && [ ! -L "$target_root/$native" ] || return 1
+    for name in "$profile" "$candidate" "$manifest"; do
+        case "$name" in "$profile") dest=$target_profile ;; *) dest=$name ;; esac
+        path=$target_root/$dest
+        [ ! -L "$path" ] || return 1
+        if [ -e "$path" ]; then
+            [ "$reuse_installed" = 1 ] && [ -f "$path" ] &&
+                cmp -s "$source_root/$name" "$path" || return 1
+        fi
+    done
+    umask 077
+    mkdir -p "$target_root/$native" "$target_root/${target_profile%/*}" "$target_root/etc" || return 1
+    for name in "$profile" "$candidate" "$manifest"; do
+        case "$name" in "$profile") dest=$target_profile ;; *) dest=$name ;; esac
+        path=$target_root/$dest
+        [ ! -e "$path" ] || continue
+        temporary=$(mktemp "$path.XXXXXX") || return 1
+        if ! cp "$source_root/$name" "$temporary" || ! chmod 600 "$temporary" ||
+            ! mv "$temporary" "$path"; then
+            rm -f "$temporary"
+            return 1
+        fi
+    done
+    cp "$source_root/$helper" "$target_root/$native/start-native-display" || return 1
+    # Preserve the helper as data only. Desktop activation is still disabled.
+    chmod 600 "$target_root/run/oneplus13/native/start-native-display" || return 1
+    chmod 700 "$target_root/run/oneplus13/native" || return 1
+    [ "$(sha256sum "$target_root/$target_profile" | cut -d' ' -f1)" = "$profile_sha" ] || return 1
+    [ "$(sha256sum "$target_root/run/oneplus13/native/start-native-display" | cut -d' ' -f1)" = "$helper_sha" ] || return 1
+    echo ONEPLUS13_NATIVE_HANDOFF_STAGED_NOT_ACTIVATED
+)

@@ -1,0 +1,122 @@
+From: Nihal Kumar Gupta <nihal.gupta@oss.qualcomm.com>
+Date: Sat, 17 Oct 2026 22:43:12 +0530
+Subject: [PATCH RFC 5/6] phy: qcom: mipi-csi2: Add C-PHY settle calculation
+Message-Id: <20261017-cphy_support-v1-5-8b0e1237ce95@oss.qualcomm.com>
+
+C-PHY settle timing is provided by the sensor and does not use the D-PHY
+T_hs_settle calculation. Add a C-PHY settle count helper and select the
+settle calculation from the configured PHY mode.
+
+Use the sensor-provided t_prepare_ns and t_preamble_ns values to derive
+the C-PHY settle count:
+
+  settle_cnt = (t_prepare_ns + t_preamble_ns / 3) * timer_clk_rate
+               / NSEC_PER_SEC
+
+Signed-off-by: Nihal Kumar Gupta <nihal.gupta@oss.qualcomm.com>
+---
+ drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c | 54 ++++++++++++++++++----
+ 1 file changed, 44 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c b/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c
+index 30f7f39ba855a0a2921189050f0084dead207fbd..d93fd9845b50bd7e5623013aecd6db42dd491dca 100644
+--- a/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c
++++ b/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c
+@@ -210,7 +210,7 @@ static void phy_qcom_mipi_csi2_reset(struct mipi_csi2phy_device *csi2phy)
+ }
+ 
+ /*
+- * phy_qcom_mipi_csi2_settle_cnt_calc - Calculate settle count value
++ * phy_qcom_dphy_settle_cnt - Calculate settle count value
+  *
+  * Helper function to calculate settle count value. This is
+  * based on the CSI2 T_hs_settle parameter which in turn
+@@ -218,7 +218,7 @@ static void phy_qcom_mipi_csi2_reset(struct mipi_csi2phy_device *csi2phy)
+  *
+  * Return settle count.
+  */
+-static u8 phy_qcom_mipi_csi2_settle_cnt_calc(s64 link_freq, u32 timer_clk_rate)
++static u8 phy_qcom_dphy_settle_cnt(s64 link_freq, u32 timer_clk_rate)
+ {
+ 	u32 t_hs_prepare_max_ps;
+ 	u32 timer_period_ps;
+@@ -310,14 +310,44 @@ phy_qcom_mipi_csi2_gen2_config_lanes(struct mipi_csi2phy_device *csi2phy,
+ 	return 0;
+ }
+ 
++static u8 phy_qcom_cphy_settle_cnt(struct mipi_csi2phy_stream_cfg *cfg,
++				   u32 timer_clk_rate)
++{
++	u64 settle_cnt;
++
++	settle_cnt = ((u64)cfg->t_prepare_ns +
++		      DIV_ROUND_CLOSEST(cfg->t_preamble_ns, 3)) * timer_clk_rate;
++	do_div(settle_cnt, NSEC_PER_SEC);
++
++	return settle_cnt;
++}
++
+ static int phy_qcom_mipi_csi2_lanes_enable(struct mipi_csi2phy_device *csi2phy,
+ 					   struct mipi_csi2phy_stream_cfg *cfg)
+ {
++	struct device *dev = csi2phy->dev;
+ 	const struct mipi_csi2phy_device_regs *regs = csi2phy_dev_to_regs(csi2phy);
+ 	struct mipi_csi2phy_lanes_cfg *lane_cfg = &cfg->lane_cfg;
+ 	u8 settle_cnt;
+ 	u8 val;
+ 	int i, ret;
++
++	if (cfg->link_freq <= 0)
++		return -EINVAL;
++
++	switch (csi2phy->phy_mode) {
++	case PHY_MODE_MIPI_CPHY:
++		settle_cnt = phy_qcom_cphy_settle_cnt(cfg,
++						 csi2phy->timer_clk_rate);
++		break;
++	case PHY_MODE_MIPI_DPHY:
++		settle_cnt = phy_qcom_dphy_settle_cnt(cfg->link_freq,
++						 csi2phy->timer_clk_rate);
++		break;
++	default:
++		dev_err(dev, "Unsupported PHY mode %u\n", csi2phy->phy_mode);
++		return -EINVAL;
++	}
+ 	if (!settle_cnt)
+ 		return -ENODEV;
+ 
+@@ -334,17 +364,21 @@ static int phy_qcom_mipi_csi2_lanes_enable(struct mipi_csi2phy_device *csi2phy,
+ 	writel(val, csi2phy->base +
+ 	       CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->common_regs_offset, 5));
+ 
+-	/* Lane configuration for polarity @ CSIPHY-base + CTRL9 */
+-	for (i = 0; i < cfg->num_data_lanes; i++) {
+-		if (lane_cfg->data[i].pol) {
+-			u8 pos = lane_cfg->data[i].pos;
++	if (csi2phy->phy_mode == PHY_MODE_MIPI_DPHY) {
++		/* Lane configuration for polarity @ CSIPHY-base + CTRL9 */
++		for (i = 0; i < cfg->num_data_lanes; i++) {
++			if (lane_cfg->data[i].pol) {
++				u8 pos = lane_cfg->data[i].pos;
+ 
+-			writel(BIT(2), csi2phy->base + CSIPHY_2PH_LN_CSI_2PHASE_CTRL9n(pos * 2));
++				writel(BIT(2), csi2phy->base +
++				       CSIPHY_2PH_LN_CSI_2PHASE_CTRL9n(pos * 2));
++			}
+ 		}
+-	}
+ 
+-	if (lane_cfg->clk.pol)
+-		writel(BIT(2), csi2phy->base + CSIPHY_2PH_LN_CSI_2PHASE_CTRL9n(lane_cfg->clk.pos));
++		if (lane_cfg->clk.pol)
++			writel(BIT(2), csi2phy->base +
++			       CSIPHY_2PH_LN_CSI_2PHASE_CTRL9n(lane_cfg->clk.pos));
++	}
+ 
+ 	val = CSIPHY_3PH_CMN_CSI_COMMON_CTRL6_COMMON_PWRDN_B;
+ 	writel(val, csi2phy->base +
+
+-- 
+2.34.1
+
+

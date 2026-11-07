@@ -1,0 +1,1263 @@
+{
+  "scope": "Public-source mechanical extraction; not a native display driver",
+  "source_repository": "OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8750",
+  "source_commit": "d50b305f7da9e14715a25120a4ac7b1a4b8b97c3",
+  "mode": "AA569 production WQHD SDC 120 Hz",
+  "hardware_tested": false,
+  "on_bytes": 1736,
+  "on_sha256": "304ebdaeab88eb5a3f62854816bf1354cde3b4505851a7bbdf4cb9922ce986e8",
+  "off_sha256": "c9211a3b580f9243e496844bc31b14cedd538babb9235ea3685cec76b43341f5",
+  "on_packets": [
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa507"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "8a01"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa531"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "d080"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa508"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "be01"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa508"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "d205"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "d30f"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "d440"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "f555"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "f618"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa521"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "a418"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa51f"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "8f0308500e010000000000000000000000020e000008020000"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa505"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "9e77"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa514"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "8000"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa517"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "a000"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa513"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "f95c"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa505"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "8500"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa51c"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "e20a0a0a1a1a1a1a1a0a0a0a04271223094645"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa501"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "fb08"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa509"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "8e108200000000"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa502"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 0,
+      "delay_ms": 0,
+      "payload": "88c000"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa514"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "8201"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa507"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "9103"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "8a01"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "8ba021"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 0,
+      "delay_ms": 0,
+      "payload": "810000000000120000ab21000c6005a0001602d002d0015501e2000a014d003c000d04f413a308000c0007102000060f0f330e1c2a38465462697077797b7d7e0082114019c0223e327c3aba3af83b383b383b764b764b744b745bb473f4010000000000"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa500"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "5e01"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "6000"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "610d"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa500"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "6d01"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa500"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "3500"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 0,
+      "delay_ms": 0,
+      "payload": "5320"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa500"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "6000"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa52d"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "830000"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "f200"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa502"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "b0018000"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 0,
+      "delay_ms": 0,
+      "payload": "ff5aa500"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa502"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "840105"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa51e"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "9899aa99"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "998800008800008800000800"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "a300"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa51e"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "8100"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 0,
+      "delay_ms": 0,
+      "payload": "ff5aa500"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa522"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "d8010c1110321919"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "dc8494bb0020c4a1cc10"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "dd01"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "def1"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "df80"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "e002005f210028"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 0,
+      "delay_ms": 0,
+      "payload": "ff5aa500"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa52d"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ed0500"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "9702"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "9803"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "990b"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "9a17"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "a00002"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "a10200"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "a402"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "a502"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "a608"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "a711"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ad0002"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ae0200"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 0,
+      "delay_ms": 0,
+      "payload": "ff5aa500"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa508"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 0,
+      "delay_ms": 0,
+      "payload": "9866"
+    },
+    {
+      "type": 5,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 0,
+      "delay_ms": 120,
+      "payload": "11"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa54f"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "8001"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa553"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "f001"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa563"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "f800000000000000000000000000000000"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "f900000000000000000000000000000000"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "fa00000000000000000000000000000000"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa553"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "f000"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 0,
+      "delay_ms": 0,
+      "payload": "ff5aa500"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa549"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "d903"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "da1e"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "dbfc"
+    },
+    {
+      "type": 21,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "df06"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 0,
+      "delay_ms": 0,
+      "payload": "ff5aa500"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa55a"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "81071a04"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "8af61712"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "8f123a33"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "a4060800"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "a5091a08"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "b3303831"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "c8060806"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "c9080d06"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ca030603"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "d72f342d"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa55b"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "80010203"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "81050903"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "83020c05"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "93000107"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "94050605"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "a4010203"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "a5090c04"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "a7fd0f04"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "b7020707"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "b8050706"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "c8010203"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "c9050702"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ca000000"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "cb0209ff"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "db000406"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "dc000604"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "ff5aa55c"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "80010202"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "81000302"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "83010805"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "93ff0102"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "94ff0604"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "a4010202"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "a5010302"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "b7ff0106"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 64,
+      "delay_ms": 0,
+      "payload": "b8ff0603"
+    },
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 0,
+      "delay_ms": 0,
+      "payload": "ff5aa500"
+    },
+    {
+      "type": 5,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 0,
+      "delay_ms": 0,
+      "payload": "29"
+    }
+  ],
+  "off_packets": [
+    {
+      "type": 57,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 0,
+      "delay_ms": 0,
+      "payload": "ff5aa500"
+    },
+    {
+      "type": 5,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 0,
+      "delay_ms": 20,
+      "payload": "28"
+    },
+    {
+      "type": 5,
+      "last": 0,
+      "channel": 0,
+      "vendor_flags": 0,
+      "delay_ms": 120,
+      "payload": "10"
+    }
+  ],
+  "dsc": {
+    "version": "1.2",
+    "bits_per_component": 10,
+    "line_buffer_depth": 11,
+    "convert_rgb": false,
+    "block_prediction": true,
+    "encoded_bits_per_pixel_x16": 256,
+    "height": 3168,
+    "width": 1440,
+    "slice_height": 22,
+    "slice_width": 720,
+    "chunk_bytes": 720,
+    "native_422": true,
+    "native_420": false,
+    "vendor_pps_bytes": 94,
+    "vendor_pps_sha256": "ae34879870a473bedca27498a9c2fd71df0b54d39d934ac84329de94a8012a98"
+  },
+  "remaining_requirements": [
+    "DPU SPR/PenTile processing and its configuration",
+    "native 422 rate-control/PPS and DSI lane-rate consistency",
+    "two DSC encoders / two mixers on one DSI interface",
+    "PM8550VE_F GPIO7 range and regulator sequencing",
+    "real panel takeover and repeated power-cycle verification"
+  ],
+  "runtime_command_bytes_match": true
+}

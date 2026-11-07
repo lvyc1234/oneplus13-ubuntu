@@ -1,0 +1,44 @@
+// SPDX-License-Identifier: BSD-3-Clause
+/* Review fragment only. Not included by the delivered phone board.
+ * L9B's current 3.008 V maximum is incompatible with the required 3.056 V.
+ * Resolve all shared consumers before changing that provider constraint.
+ */
+&tlmm {
+	dodge_ir_mosi_active: dodge-ir-mosi-active-state {
+		pins = "gpio53";
+		function = "qup1_se5";
+		drive-strength = <6>;
+		bias-disable;
+	};
+	dodge_ir_mosi_sleep: dodge-ir-mosi-sleep-state {
+		pins = "gpio53";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+		output-low;
+	};
+};
+
+&spi5 {
+	status = "disabled";
+	/* Replace the four-pin generic SPI group with the observed MOSI only. */
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&dodge_ir_mosi_active>;
+	pinctrl-1 = <&dodge_ir_mosi_sleep>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+	ir@0 {
+		compatible = "oneplus,dodge-ir-experimental";
+		reg = <0>;
+		spi-max-frequency = <5000000>;
+		irda_regulator-supply = <&vreg_l9b_2p9>;
+		pinctrl-names = "active", "sleep";
+		pinctrl-0 = <&dodge_ir_mosi_active>;
+		pinctrl-1 = <&dodge_ir_mosi_sleep>;
+		status = "disabled";
+	};
+};
+
+&i2c5 {
+	status = "disabled";
+};

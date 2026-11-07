@@ -1,0 +1,39 @@
+name: OnePlus 13 pinned PLL and PHY audit
+on:
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Fetch and verify immutable public source blobs
+        run: python3 tools/oneplus13/fetch-pll-sources.py --output out/pll-sources
+      - name: Check current phone tooling and isolated native activation fixtures
+        run: python3 -m unittest discover -s tests -p 'test_oneplus13*.py' -v
+      - name: Execute actual platform and vendor C with sanitizers
+        run: |
+          python3 tools/oneplus13/check-pll-timing.py --sources out/pll-sources \
+            --output out/pll-timing-verification.json --sanitize
+      - name: Fetch and verify display timing and clock topology sources
+        run: python3 tools/oneplus13/fetch-display-path.py --output out/display-path
+      - name: Execute actual CCF pixel divider and command TE callbacks
+        run: |
+          python3 tools/oneplus13/check-clock-tree.py --sources out/display-path \
+            --output out/clock-tree-verification.json --sanitize
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: oneplus13-pll-audit-${{ github.sha }}
+          path: |
+            out/pll-sources/
+            out/pll-timing-verification.json
+            out/display-path/
+            out/clock-tree-verification.json
+          if-no-files-found: error
+          retention-days: 14

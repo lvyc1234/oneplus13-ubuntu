@@ -1,0 +1,314 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH 8/8] drm/msm/dsi: own complete AA569 command groups
+
+Experimental opt-in SM8750/AA569 single DSI0 path. Preserve vendor DMA
+boundaries without pending state between calls. No hardware Tested-by.
+
+diff --git a/include/drm/drm_mipi_dsi.h b/include/drm/drm_mipi_dsi.h
+--- a/include/drm/drm_mipi_dsi.h
++++ b/include/drm/drm_mipi_dsi.h
+@@ -69,6 +69,7 @@
+  * @attach: attach DSI device to DSI host
+  * @detach: detach DSI device from DSI host
+  * @transfer: transmit a DSI packet
++ * @transfer_batch: optional synchronous command group, with no serial fallback
+  *
+  * DSI packets transmitted by .transfer() are passed in as mipi_dsi_msg
+  * structures. This structure contains information about the type of packet
+@@ -94,6 +95,8 @@
+ 		      struct mipi_dsi_device *dsi);
+ 	ssize_t (*transfer)(struct mipi_dsi_host *host,
+ 			    const struct mipi_dsi_msg *msg);
++	int (*transfer_batch)(struct mipi_dsi_host *host,
++			      const struct mipi_dsi_msg *msgs, size_t count);
+ };
+ 
+ /**
+@@ -271,6 +274,8 @@
+ struct mipi_dsi_device *of_find_mipi_dsi_device_by_node(struct device_node *np);
+ int mipi_dsi_attach(struct mipi_dsi_device *dsi);
+ int mipi_dsi_detach(struct mipi_dsi_device *dsi);
++int mipi_dsi_transfer_batch(struct mipi_dsi_device *dsi,
++			    const struct mipi_dsi_msg *msgs, size_t count);
+ int devm_mipi_dsi_attach(struct device *dev, struct mipi_dsi_device *dsi);
+ int mipi_dsi_shutdown_peripheral(struct mipi_dsi_device *dsi);
+ int mipi_dsi_turn_on_peripheral(struct mipi_dsi_device *dsi);
+diff --git a/drivers/gpu/drm/drm_mipi_dsi.c b/drivers/gpu/drm/drm_mipi_dsi.c
+--- a/drivers/gpu/drm/drm_mipi_dsi.c
++++ b/drivers/gpu/drm/drm_mipi_dsi.c
+@@ -584,6 +584,41 @@
+ EXPORT_SYMBOL(mipi_dsi_create_packet);
+ 
+ /**
++ * mipi_dsi_transfer_batch - synchronously transmit one command group
++ * @dsi: attached peripheral
++ * @msgs: complete group, with explicit channel and transmission flags
++ * @count: number of messages
++ *
++ * The host owns the entire group until completion or error. All buffers must
++ * remain valid until return. Device mode_flags are not applied to these explicit
++ * messages. No serial fallback is provided: separate kickoffs change timing.
++ * Hosts must reject unsupported groups before sending any packet. An error
++ * after kickoff may mean the panel received part or all of the group; this
++ * interface provides no rollback of peripheral state and must not be retried
++ * automatically. No queued commands may survive return.
++ *
++ * Return: 0 on completion, negative errno on failure; -EOPNOTSUPP if absent.
++ */
++int mipi_dsi_transfer_batch(struct mipi_dsi_device *dsi,
++			    const struct mipi_dsi_msg *msgs, size_t count)
++{
++	size_t i;
++
++	/* Like ordinary transfers, permit synchronous component binding during
++	 * host->attach(), before the core sets dsi->attached. Host owns readiness.
++	 */
++	if (!dsi || !dsi->host || !msgs || !count)
++		return -EINVAL;
++	for (i = 0; i < count; i++)
++		if (msgs[i].channel != dsi->channel)
++			return -EINVAL;
++	if (!dsi->host->ops || !dsi->host->ops->transfer_batch)
++		return -EOPNOTSUPP;
++	return dsi->host->ops->transfer_batch(dsi->host, msgs, count);
++}
++EXPORT_SYMBOL_GPL(mipi_dsi_transfer_batch);
++
++/**
+  * mipi_dsi_shutdown_peripheral() - sends a Shutdown Peripheral command
+  * @dsi: DSI peripheral device
+  *
+diff --git a/drivers/gpu/drm/msm/dsi/dsi.h b/drivers/gpu/drm/msm/dsi/dsi.h
+--- a/drivers/gpu/drm/msm/dsi/dsi.h
++++ b/drivers/gpu/drm/msm/dsi/dsi.h
+@@ -51,6 +51,7 @@
+ int msm_dsi_manager_connector_init(struct msm_dsi *msm_dsi,
+ 				   struct drm_encoder *encoder);
+ int msm_dsi_manager_cmd_xfer(int id, const struct mipi_dsi_msg *msg);
++bool msm_dsi_manager_batch_allowed(int id);
+ bool msm_dsi_manager_cmd_xfer_trigger(int id, u32 dma_base, u32 len);
+ int msm_dsi_manager_register(struct msm_dsi *msm_dsi);
+ void msm_dsi_manager_unregister(struct msm_dsi *msm_dsi);
+diff --git a/drivers/gpu/drm/msm/dsi/dsi_manager.c b/drivers/gpu/drm/msm/dsi/dsi_manager.c
+--- a/drivers/gpu/drm/msm/dsi/dsi_manager.c
++++ b/drivers/gpu/drm/msm/dsi/dsi_manager.c
+@@ -490,6 +490,13 @@
+ 	return 0;
+ }
+ 
++bool msm_dsi_manager_batch_allowed(int id)
++{
++	/* Phone DSI0 only; never borrow the Pad's bonded/broadcast semantics. */
++	return id == DSI_0 && dsi_mgr_get_dsi(id) &&
++		!IS_BONDED_DSI() && !IS_SYNC_NEEDED();
++}
++
+ int msm_dsi_manager_cmd_xfer(int id, const struct mipi_dsi_msg *msg)
+ {
+ 	struct msm_dsi *msm_dsi = dsi_mgr_get_dsi(id);
+diff --git a/drivers/gpu/drm/msm/dsi/dsi_host.c b/drivers/gpu/drm/msm/dsi/dsi_host.c
+--- a/drivers/gpu/drm/msm/dsi/dsi_host.c
++++ b/drivers/gpu/drm/msm/dsi/dsi_host.c
+@@ -185,6 +185,7 @@
+ 	u32 dma_cmd_ctrl_restore;
+ 
+ 	bool registered;
++	bool aa569_batch;
+ 	bool power_on;
+ 	bool enabled;
+ 	int irq;
+@@ -423,12 +424,16 @@
+ 	 * cannot use assigned-clock-parents.
+ 	 */
+ 	ret = clk_set_parent(msm_host->byte_src_clk, msm_host->dsi_pll_byte_clk);
+-	if (ret)
++	if (ret) {
+ 		dev_err(dev, "Failed to parent byte_src -> dsi_pll_byte: %d\n", ret);
++		return ret;
++	}
+ 
+ 	ret = clk_set_parent(msm_host->pixel_src_clk, msm_host->dsi_pll_pixel_clk);
+-	if (ret)
++	if (ret) {
+ 		dev_err(dev, "Failed to parent pixel_src -> dsi_pll_pixel: %d\n", ret);
++		return ret;
++	}
+ 
+ 	return dsi_link_clk_set_rate_6g(msm_host);
+ }
+@@ -1826,9 +1831,16 @@
+ 		}
+ 	}
+ 
++	msm_host->aa569_batch =
++		of_device_is_compatible(dsi->dev.of_node, "oneplus,dodge-aa569") &&
++		of_device_is_compatible(msm_host->pdev->dev.of_node,
++					"qcom,sm8750-dsi-ctrl");
++	/* component_add() can synchronously bind/start DRM before returning. */
+ 	ret = dsi_dev_attach(msm_host->pdev);
+-	if (ret)
++	if (ret) {
++		msm_host->aa569_batch = false;
+ 		return ret;
++	}
+ 
+ 	DBG("id=%d", msm_host->id);
+ 
+@@ -1841,6 +1853,7 @@
+ 	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
+ 
+ 	dsi_dev_detach(msm_host->pdev);
++	msm_host->aa569_batch = false;
+ 
+ 	DBG("id=%d", msm_host->id);
+ 
+@@ -1860,6 +1873,141 @@
+ 	ret = msm_dsi_manager_cmd_xfer(msm_host->id, msg);
+ 	mutex_unlock(&msm_host->cmd_mutex);
+ 
++	return ret;
++}
++
++/* Validate the entire bounded group before touching DMA memory or resources. */
++static int dsi_batch_size(struct msm_dsi_host *msm_host,
++			  const struct mipi_dsi_msg *msgs, size_t count)
++{
++	size_t i, total = 0;
++	struct mipi_dsi_packet packet;
++	int ret;
++
++	if (!msgs || !count || count > 64 || msm_host->tx_size <= 0)
++		return -EINVAL;
++	for (i = 0; i < count; i++) {
++		const struct mipi_dsi_msg *msg = &msgs[i];
++		size_t len;
++
++		/* Only the characterized AA569 DCS writes; no ACK/read/mixed LP. */
++		if (!msg->tx_buf || !msg->tx_len || msg->tx_len > 100 ||
++		    msg->rx_buf || msg->rx_len || msg->channel != 0 ||
++		    (msg->flags & ~MIPI_DSI_MSG_USE_LPM) ||
++		    msg->flags != msgs[0].flags ||
++		    msg->type != (msg->tx_len == 1 ? MIPI_DSI_DCS_SHORT_WRITE :
++				  msg->tx_len == 2 ? MIPI_DSI_DCS_SHORT_WRITE_PARAM :
++						     MIPI_DSI_DCS_LONG_WRITE))
++			return -EINVAL;
++		ret = mipi_dsi_create_packet(&packet, msg);
++		if (ret)
++			return ret;
++		len = ALIGN(packet.size, 4);
++		if (len > msm_host->tx_size - total)
++			return -EMSGSIZE;
++		total += len;
++	}
++	return total;
++}
++
++static int dsi_batch_pack(struct msm_dsi_host *msm_host,
++			  const struct mipi_dsi_msg *msgs, size_t count)
++{
++	const struct msm_dsi_cfg_handler *cfg_hnd = msm_host->cfg_hnd;
++	struct mipi_dsi_packet packet;
++	size_t i, offset = 0, len;
++	u8 *data;
++	int ret;
++
++	ret = dsi_batch_size(msm_host, msgs, count);
++	if (ret < 0)
++		return ret;
++	data = cfg_hnd->ops->tx_buf_get(msm_host);
++	if (IS_ERR(data))
++		return PTR_ERR(data);
++	for (i = 0; i < count; i++) {
++		ret = mipi_dsi_create_packet(&packet, &msgs[i]);
++		if (ret)
++			goto out;
++		len = ALIGN(packet.size, 4);
++		data[offset] = packet.header[1];
++		data[offset + 1] = packet.header[2];
++		data[offset + 2] = packet.header[0];
++		data[offset + 3] = i == count - 1 ? BIT(7) : 0;
++		if (mipi_dsi_packet_format_is_long(msgs[i].type))
++			data[offset + 3] |= BIT(6);
++		if (packet.payload_length)
++			memcpy(data + offset + 4, packet.payload, packet.payload_length);
++		memset(data + offset + packet.size, 0xff, len - packet.size);
++		offset += len;
++	}
++	ret = offset;
++out:
++	if (cfg_hnd->ops->tx_buf_put)
++		cfg_hnd->ops->tx_buf_put(msm_host);
++	return ret;
++}
++
++static int dsi_batch_prepare(struct msm_dsi_host *msm_host,
++			     const struct mipi_dsi_msg *msg)
++{
++	const struct msm_dsi_cfg_handler *cfg_hnd = msm_host->cfg_hnd;
++	int ret;
++
++	/* The legacy single-message path is unchanged. Check every acquisition. */
++	ret = pm_runtime_resume_and_get(&msm_host->pdev->dev);
++	if (ret < 0)
++		return ret;
++	ret = cfg_hnd->ops->link_clk_set_rate(msm_host);
++	if (ret)
++		goto put_pm;
++	ret = cfg_hnd->ops->link_clk_enable(msm_host);
++	if (ret)
++		goto put_pm; /* link_clk_enable unwinds its own partial enables */
++	if (!(msg->flags & MIPI_DSI_MSG_USE_LPM))
++		dsi_set_tx_power_mode(0, msm_host);
++	msm_host->dma_cmd_ctrl_restore = dsi_read(msm_host, REG_DSI_CTRL);
++	dsi_write(msm_host, REG_DSI_CTRL, msm_host->dma_cmd_ctrl_restore |
++		  DSI_CTRL_CMD_MODE_EN | DSI_CTRL_ENABLE);
++	dsi_intr_ctrl(msm_host, DSI_IRQ_MASK_CMD_DMA_DONE, 1);
++	return 0;
++put_pm:
++	/* set_rate may have voted OPP before a later parent/rate/enable failed. */
++	dev_pm_opp_set_rate(&msm_host->pdev->dev, 0);
++	pm_runtime_put(&msm_host->pdev->dev);
++	return ret;
++}
++
++static int dsi_host_transfer_batch(struct mipi_dsi_host *host,
++				   const struct mipi_dsi_msg *msgs, size_t count)
++{
++	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
++	int ret, len;
++
++	mutex_lock(&msm_host->cmd_mutex);
++	if (!msm_host->aa569_batch || !msm_host->power_on ||
++	    msm_host->cphy_mode || (msm_host->mode_flags & MIPI_DSI_MODE_VIDEO) ||
++	    !msm_dsi_manager_batch_allowed(msm_host->id)) {
++		ret = -EOPNOTSUPP;
++		goto unlock;
++	}
++	len = dsi_batch_pack(msm_host, msgs, count);
++	if (len < 0) {
++		ret = len;
++		goto unlock;
++	}
++	ret = dsi_batch_prepare(msm_host, &msgs[0]);
++	if (ret)
++		goto unlock;
++	ret = dsi_cmd_dma_tx(msm_host, len);
++	if (ret == -ETIMEDOUT || (ret >= 0 && ret != len))
++		dsi_sw_reset(msm_host); /* abort DMA before releasing/reusing buffer */
++	/* Always restore resources, including timeout/IOVA/short DMA failures. */
++	msm_dsi_host_xfer_restore(host, &msgs[0]);
++	if (ret >= 0)
++		ret = ret == len ? 0 : -EIO;
++unlock:
++	mutex_unlock(&msm_host->cmd_mutex);
+ 	return ret;
+ }
+ 
+@@ -1867,6 +2015,7 @@
+ 	.attach = dsi_host_attach,
+ 	.detach = dsi_host_detach,
+ 	.transfer = dsi_host_transfer,
++	.transfer_batch = dsi_host_transfer_batch,
+ };
+ 
+ /*

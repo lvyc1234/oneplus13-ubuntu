@@ -1,0 +1,261 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH] libhexagonrpc: select input sequence type and advance metadata
+
+Preserve the original tested input TYPE_SEQ layout, selecting the descriptor's
+own inner type instead of reusing an earlier TYPE or an uninitialized pointer.
+Skip the allocated metadata buffer when encoding subsequent arguments; empty
+sequences must not consume nonexistent metadata in alloc/encode/free stages.
+Validate type indices and keep buffer counts wide until checking the scalar's
+eight-bit input/output limit before allocation. Output TYPE_SEQ remains
+unqualified and is explicitly refused before consuming pointers or ioctl.
+
+The real C mock-ioctl test checks sequence-first, distinct indices, consecutive
+sequences, a following blob, fixed blobs, zero count, invalid tables and count
+overflow. Original golden-wire tests are retained unchanged. This does not
+establish all IDL families, allocation-failure behavior or hardware operation.
+
+--- a/libhexagonrpc/hexagonrpc.c
++++ b/libhexagonrpc/hexagonrpc.c
+@@ -61,8 +61,8 @@
+ 
+ // Used by count_ops
+ struct buf_count {
+-	uint8_t n_inbufs;
+-	uint8_t n_outbufs;
++	size_t n_inbufs;
++	size_t n_outbufs;
+ 	uint32_t n_prim_in;
+ 	uint32_t n_prim_out;
+ };
+@@ -194,6 +194,8 @@
+ 				ops->emit_prim_in(size, iptr, data);
+ 				break;
+ 			case HRPC_ARG_TYPE:
++				if (!def->inner_types || def->args[i].d >= def->n_inner_types)
++					return -1;
+ 				iptr = va_arg(list, const void *);
+ 				inner_type = &def->inner_types[def->args[i].d];
+ 				ret = emit_inner_type_in(inner_type,
+@@ -211,6 +213,9 @@
+ 
+ 				break;
+ 			case HRPC_ARG_TYPE_SEQ:
++				if (!def->inner_types || def->args[i].d >= def->n_inner_types)
++					return -1;
++				inner_type = &def->inner_types[def->args[i].d];
+ 				arg32 = va_arg(list, uint32_t);
+ 				iptr = va_arg(list, const void *);
+ 
+@@ -225,6 +230,8 @@
+ 				ops->emit_prim_out(def->args[i].d, optr, data);
+ 				break;
+ 			case HRPC_ARG_OUT_TYPE:
++				if (!def->inner_types || def->args[i].d >= def->n_inner_types)
++					return -1;
+ 				optr = va_arg(list, void *);
+ 				inner_type = &def->inner_types[def->args[i].d];
+ 				ret = emit_inner_type_out(inner_type,
+@@ -242,15 +249,9 @@
+ 
+ 				break;
+ 			case HRPC_ARG_OUT_TYPE_SEQ:
+-				arg32 = va_arg(list, uint32_t);
+-				optr = va_arg(list, void *);
+-
+-				ops->emit_prim_in(sizeof(arg32), &arg32, data);
+-				ret = ops->emit_type_seq_out(def, inner_type,
+-							     data, arg32, optr);
+-				if (ret)
+-					return ret;
+-				break;
++				/* Output sequences have no validated marshalling contract.
++				 * Refuse before consuming caller pointers or issuing ioctl. */
++				return -1;
+ 			default:
+ 				return -1;
+ 		}
+@@ -362,6 +363,9 @@
+ 	int ret = 0;
+ 	size_t i;
+ 
++	if (!n_inst)
++		return 0;
++
+ 	if (n_inst) {
+ 		ret = emit_inner_type_in(type,
+ 					 &count_ops, &inner_count,
+@@ -456,7 +460,10 @@
+ 	int ret;
+ 	size_t i;
+ 
+-	inner_pos.buf = pos->buf;
++	if (!n_inst)
++		return 0;
++
++	inner_pos.buf = pos->buf + 1; /* Skip the sequence metadata buffer. */
+ 	inner_pos.prim = (void *) pos->buf->ptr;
+ 
+ 	for (i = 0; i < n_inst; i++) {
+@@ -569,6 +576,9 @@
+ 	int ret = 0;
+ 	size_t i;
+ 
++	if (!n_inst)
++		return 0;
++
+ 	if (n_inst) {
+ 		free((void *) curr->inbuf->ptr);
+ 	}
+@@ -635,6 +645,10 @@
+ 	if (count->n_prim_out)
+ 		count->n_outbufs++;
+ 
++	/* REMOTE_SCALARS_MAKE has eight bits for each buffer count. */
++	if (count->n_inbufs > UINT8_MAX || count->n_outbufs > UINT8_MAX)
++		return -1;
++
+ 	return 0;
+ }
+ 
+--- /dev/null
++++ b/tests/test_input_type_sequence.c
+@@ -0,0 +1,124 @@
++/* SPDX-License-Identifier: GPL-3.0-or-later */
++#include <libhexagonrpc/hexagonrpc.h>
++#include <misc/fastrpc.h>
++#include <stdarg.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <string.h>
++#include <sys/ioctl.h>
++#ifdef __GLIBC__
++typedef unsigned long int ioctl_operation;
++#else
++typedef int ioctl_operation;
++#endif
++struct packed_bytes { uint32_t size; const char *ptr; } __attribute__((packed));
++static const struct hrpc_arg_def_interp4 blob[] = {{HRPC_ARG_BLOB,4}};
++static const struct hrpc_arg_def_interp4 bytes[] = {{HRPC_ARG_BLOB_SEQ,1}};
++static const struct hrpc_inner_type_def_interp4 types[] = {{1,blob},{1,bytes}};
++static const void *expected[8];
++static size_t lengths[8], n_expected;
++static unsigned int calls, failures;
++static void fixture(size_t n, const void **data, const size_t *sizes)
++{
++    n_expected=n;
++    memcpy(expected,data,n*sizeof(*data));
++    memcpy(lengths,sizes,n*sizeof(*sizes));
++}
++int ioctl(int fd, ioctl_operation request, ...)
++{
++    va_list ap;
++    struct fastrpc_invoke *invoke;
++    struct fastrpc_invoke_args *args;
++    size_t i;
++    (void)fd;
++    calls++;
++    if (request != FASTRPC_IOCTL_INVOKE) { failures++; return -1; }
++    va_start(ap,request);
++    invoke=(void *)(uintptr_t)va_arg(ap,__u64);
++    va_end(ap);
++    args=(void *)(uintptr_t)invoke->args;
++    if (REMOTE_SCALARS_INBUFS(invoke->sc)!=n_expected || REMOTE_SCALARS_OUTBUFS(invoke->sc)) {
++        failures++; return -1;
++    }
++    for (i=0;i<n_expected;i++) {
++        if (args[i].length!=lengths[i] ||
++            (lengths[i] && memcmp((void *)(uintptr_t)args[i].ptr,expected[i],lengths[i]))) {
++            failures++; return -1;
++        }
++    }
++    return 0;
++}
++int main(void)
++{
++    struct packed_bytes strings[]={{3,"foo"},{3,"bar"}};
++    struct packed_bytes more[]={{2,"hi"}};
++    struct hrpc_arg_def_interp4 args[]={{HRPC_ARG_TYPE_SEQ,1},{HRPC_ARG_TYPE_SEQ,1},{HRPC_ARG_BLOB_SEQ,1}};
++    struct hrpc_method_def_interp4 def={0,1,args,2,types};
++    /* Sequence first, own type index 1; no preceding TYPE to initialize it. */
++    {
++        const uint32_t primary[]={2}, metadata[]={3,3};
++        const void *data[]={primary,metadata,"foo","bar"};
++        const size_t sizes[]={4,8,3,3};
++        fixture(4,data,sizes);
++        if (hexagonrpc(&def,-1,0,(uint32_t)2,strings) || calls!=1 || failures) return 1;
++    }
++    /* Consecutive sequences and a following blob catch lagging buffer cursor. */
++    {
++        const uint32_t primary[]={2,1,1}, meta1[]={3,3}, meta2[]={2};
++        const void *data[]={primary,meta1,"foo","bar",meta2,"hi","!"};
++        const size_t sizes[]={12,8,3,3,4,2,1};
++        def.n_args=3;fixture(7,data,sizes);
++        if (hexagonrpc(&def,-1,0,(uint32_t)2,strings,(uint32_t)1,more,(uint32_t)1,"!") || calls!=2 || failures) return 2;
++    }
++    /* Zero input sequence consumes no metadata buffer and never reads its pointer. */
++    {
++        const uint32_t primary[]={0,1,1}, metadata[]={2};
++        const void *data[]={primary,metadata,"hi","!"};
++        const size_t sizes[]={12,4,2,1};
++        fixture(4,data,sizes);
++        if (hexagonrpc(&def,-1,0,(uint32_t)0,(void *)(uintptr_t)1,(uint32_t)1,more,(uint32_t)1,"!") || calls!=3 || failures) return 3;
++    }
++    /* TYPE index 0 followed by TYPE_SEQ index 1 must not reuse the first type. */
++    {
++        const uint32_t primary[]={0x12345678,1}, metadata[]={2};
++        const void *data[]={primary,metadata,"hi"};
++        const size_t sizes[]={8,4,2};
++        uint32_t value=0x12345678;
++        args[0]=(struct hrpc_arg_def_interp4){HRPC_ARG_TYPE,0};def.n_args=2;
++        fixture(3,data,sizes);
++        if (hexagonrpc(&def,-1,0,&value,(uint32_t)1,more) || calls!=4 || failures) return 4;
++    }
++    /* Pure fixed blob input sequence retains the upstream metadata layout. */
++    {
++        const uint32_t primary[]={2}, values[]={7,9};
++        const void *data[]={primary,values};
++        const size_t sizes[]={4,8};
++        args[0]=(struct hrpc_arg_def_interp4){HRPC_ARG_TYPE_SEQ,0};def.n_args=1;
++        fixture(2,data,sizes);
++        if (hexagonrpc(&def,-1,0,(uint32_t)2,values) || calls!=5 || failures) return 5;
++    }
++    /* Invalid descriptor tables/indices are rejected before unreadable pointers. */
++    {
++        uint32_t families[]={HRPC_ARG_TYPE,HRPC_ARG_TYPE_SEQ,HRPC_ARG_OUT_TYPE};
++        size_t i;
++        for (i=0;i<HRPC_ARRAY_SIZE(families);i++) {
++            args[0]=(struct hrpc_arg_def_interp4){families[i],UINT32_MAX};
++            if (hexagonrpc(&def,-1,0,(void *)(uintptr_t)1)!=-1 || calls!=5) return 6;
++            args[0].d=0;def.inner_types=NULL;
++            if (hexagonrpc(&def,-1,0,(void *)(uintptr_t)1)!=-1 || calls!=5) return 7;
++            def.inner_types=types;
++        }
++    }
++    /* Output sequences remain unqualified and must not reach ioctl. */
++    {
++        uint32_t counts[]={0,1,UINT32_MAX};size_t i;
++        args[0]=(struct hrpc_arg_def_interp4){HRPC_ARG_OUT_TYPE_SEQ,0};
++        for (i=0;i<HRPC_ARRAY_SIZE(counts);i++)
++            if (hexagonrpc(&def,-1,0,counts[i],(void *)(uintptr_t)1)!=-1 || calls!=5) return 8;
++    }
++    /* 254 nested buffers plus primary/metadata cannot wrap an 8-bit count. */
++    args[0]=(struct hrpc_arg_def_interp4){HRPC_ARG_TYPE_SEQ,1};
++    if (hexagonrpc(&def,-1,0,(uint32_t)254,strings)!=-1 || calls!=5 || failures) return 9;
++    puts("INPUT_SEQUENCE_WIRE_FIXTURES_ZERO_INDEX_CURSOR_LIMIT_PASS_OUTPUT_SEQUENCE_REFUSED");
++    return 0;
++}
+--- a/tests/meson.build
++++ b/tests/meson.build
+@@ -121,3 +121,12 @@
+ )
+ test('phone-pcb-version', test_phone_pcb_version,
+   args : [meson.current_build_dir()])
++
++test_input_type_sequence = executable('test_input_type_sequence',
++  'test_input_type_sequence.c',
++  '../libhexagonrpc/hexagonrpc.c',
++  c_args : cflags,
++  include_directories : include,
++)
++
++test('input-type-sequence', test_input_type_sequence)

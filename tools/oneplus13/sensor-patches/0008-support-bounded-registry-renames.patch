@@ -1,0 +1,485 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH] phone-rpc: support bounded registry renames
+
+Run75 completed the bounded observation window with no write-mode refusals but
+the DSP repeatedly called method33 (frename), which was unimplemented.
+
+Turn the fixed four-entry store into a bounded copy-on-write registry namespace.
+Only file basenames below the exact persist sensor registry directory and the
+exact camera registry dump are admitted. Names are canonicalized, relative
+registry basenames are accepted, traversal and other prefixes are refused.
+
+The store now holds up to512 in-memory files,16MiB aggregate capacity,1MiB per
+file and64 handles. Rename is atomic inside RAM, preserves open handles to the
+source and refuses to replace a destination with an active handle. No host
+descriptor or pathname is writable, and deinitialization releases every file.
+
+Wire tests cover method33, cross-path readback and rename-back. Storage tests
+cover canonical names, replacement and active-destination refusal. These checks
+do not qualify phone writes or a sensor stream.
+
+--- a/hexagonrpcd/apps_std.c
++++ b/hexagonrpcd/apps_std.c
+@@ -88,20 +88,27 @@
+ 	return 0;
+ }
+ 
+-static int apps_std_seed_ram(struct apps_std_ctx *ctx, unsigned int index,
+-			     const char *name, int dirfd)
+-{
+-	struct pr_file *file = &ctx->ramfs.files[index];
++static int apps_std_seed_ram(struct apps_std_ctx *ctx, const char *name,
++			     int dirfd, unsigned int *index)
++{
++	struct pr_file *file = NULL;
+ 	struct stat stats;
+ 	ssize_t got;
+ 	size_t done = 0;
+ 	int fd, ret;
+ 
+-	if (file->present)
++	ret = pr_find(&ctx->ramfs, name);
++	if (ret >= 0) {
++		*index = (unsigned int) ret;
+ 		return 0;
++	}
+ 	fd = hexagonfs_openat(ctx->fds, ctx->rootfd, dirfd, name);
+ 	if (fd < 0)
+ 		return fd;
++	ret = pr_slot(&ctx->ramfs, name, index);
++	if (ret)
++		goto out_close;
++	file = &ctx->ramfs.files[*index];
+ 	ret = hexagonfs_fstat(ctx->fds, fd, &stats);
+ 	if (ret)
+ 		goto out_close;
+@@ -127,6 +134,8 @@
+ 	ret = 0;
+ out_close:
+ 	hexagonfs_close(ctx->fds, fd);
++	if (ret && file != NULL && !file->present)
++		pr_reset_file(&ctx->ramfs, file);
+ 	return ret;
+ }
+ 
+@@ -348,18 +357,22 @@
+ 		return AEE_EFAILED;
+ 	}
+ 
+-	if (ctx->ramfs.enabled && pr_index(inbufs[3].p) >= 0) {
++	if (ctx->ramfs.enabled && pr_name_supported(inbufs[3].p)) {
+ 		char mode;
+ 		uint32_t ramfd;
+-		int index = pr_index(inbufs[3].p);
++		unsigned int index;
+ 
+ 		if (strcmp(inbufs[1].p, "ADSP_LIBRARY_PATH")
+ 		 || strcmp(inbufs[2].p, ";")
+ 		 || apps_std_ram_mode(inbufs[4].p, &mode))
+ 			return AEE_EUNSUPPORTED;
+ 		if (mode != 'w') {
+-			ret = apps_std_seed_ram(ctx, index, inbufs[3].p, dirfd);
++			ret = apps_std_seed_ram(ctx, inbufs[3].p, dirfd, &index);
+ 			if (ret && !(mode == 'a' && ret == -ENOENT))
++				return apps_std_ram_error(ret);
++		} else {
++			ret = pr_slot(&ctx->ramfs, inbufs[3].p, &index);
++			if (ret)
+ 				return apps_std_ram_error(ret);
+ 		}
+ 		ret = pr_open(&ctx->ramfs, index, mode, &ramfd);
+@@ -500,7 +513,7 @@
+ 
+ 	if (inbufs[1].p == NULL || !apps_std_strict_string(&inbufs[1]))
+ 		return AEE_EBADPARM;
+-	if (ctx->ramfs.enabled && pr_index(pathname) >= 0)
++	if (ctx->ramfs.enabled && pr_name_supported(pathname))
+ 		return AEE_EUNSUPPORTED;
+ 
+ 	fd = hexagonfs_openat(ctx->fds, ctx->rootfd, ctx->adsp_library_dirfd, pathname);
+@@ -539,6 +552,38 @@
+ 	first_out->ctimensec = (int64_t) stats.st_ctim.tv_nsec;
+ 
+ 	return 0;
++}
++
++static uint32_t apps_std_frename(void *data,
++				 const struct fastrpc_io_buffer *inbufs,
++				 struct fastrpc_io_buffer *outbufs)
++{
++	struct apps_std_ctx *ctx = data;
++	const char *old_name;
++	const char *new_name;
++	char old_canonical[PR_NAME_MAX];
++	char new_canonical[PR_NAME_MAX];
++	unsigned int index;
++	int ret;
++
++	(void) outbufs;
++	if (!apps_std_strict_string(&inbufs[1])
++	 || !apps_std_strict_string(&inbufs[2]))
++		return AEE_EBADPARM;
++	old_name = inbufs[1].p;
++	new_name = inbufs[2].p;
++	if (!ctx->ramfs.enabled
++	 || pr_canonical_name(old_name, old_canonical)
++	 || pr_canonical_name(new_name, new_canonical))
++		return AEE_EUNSUPPORTED;
++	ret = apps_std_seed_ram(ctx, old_name,
++				ctx->adsp_library_dirfd, &index);
++	if (ret) {
++		if (ret == -ENOENT)
++			return AEE_ENOSUCH;
++		return apps_std_ram_error(ret);
++	}
++	return apps_std_ram_error(pr_rename(&ctx->ramfs, old_name, new_name));
+ }
+ 
+ /*
+@@ -753,7 +798,12 @@
+ 		.impl = apps_std_stat,
+ 	},
+ 	{ .def = NULL, .impl = NULL, },
+-	{ .def = NULL, .impl = NULL, },
++	{
++		.def = &apps_std_frename_def,
++		.expected_sc = REMOTE_SCALARS_MAKE(31, 3, 0),
++		.strict_sc = true,
++		.impl = apps_std_frename,
++	},
+ 	{ .def = NULL, .impl = NULL, },
+ 	{ .def = NULL, .impl = NULL, },
+ 	{
+--- a/hexagonrpcd/interface/apps_std.c
++++ b/hexagonrpcd/interface/apps_std.c
+@@ -194,6 +194,19 @@
+ 	.msg_id = 31,
+ 	.n_args = HRPC_ARRAY_SIZE(apps_std_stat_args),
+ 	.args = apps_std_stat_args,
++	.n_inner_types = 0,
++	.inner_types = NULL,
++};
++
++static struct hrpc_arg_def_interp4 apps_std_frename_args[] = {
++	{ HRPC_ARG_BLOB_SEQ, sizeof(char) },
++	{ HRPC_ARG_BLOB_SEQ, sizeof(char) },
++};
++
++const struct hrpc_method_def_interp4 apps_std_frename_def = {
++	.msg_id = 33,
++	.n_args = HRPC_ARRAY_SIZE(apps_std_frename_args),
++	.args = apps_std_frename_args,
+ 	.n_inner_types = 0,
+ 	.inner_types = NULL,
+ };
+--- a/hexagonrpcd/interface/apps_std.h
++++ b/hexagonrpcd/interface/apps_std.h
+@@ -36,6 +36,7 @@
+ extern struct hrpc_method_def_interp4 apps_std_readdir_def;
+ extern struct hrpc_method_def_interp4 apps_std_mkdir_def;
+ extern struct hrpc_method_def_interp4 apps_std_stat_def;
++extern struct hrpc_method_def_interp4 apps_std_frename_def;
+ extern const struct hrpc_method_def_interp4 apps_std_fopen_with_env_fd_def;
+ 
+ /* Methods above 30 are sent as method 31 with the real ID in inbuf[0]. */
+--- a/hexagonrpcd/phone_ramfs.h
++++ b/hexagonrpcd/phone_ramfs.h
+@@ -7,21 +7,26 @@
+ #include <stdint.h>
+ #include <stdlib.h>
+ #include <string.h>
+-#define PR_FILES 4u
++#define PR_FILES 512u
++#define PR_NAME_MAX 256u
+ #define PR_FILE_CAP (1024u * 1024u)
++#define PR_TOTAL_CAP (16u * 1024u * 1024u)
+ #define PR_IO_CAP (64u * 1024u)
+-#define PR_HANDLES 16u
++#define PR_HANDLES 64u
+ #define PR_GEN_MAX 0x3fffffu
+ _Static_assert(PR_HANDLES <= 256, "handle slot must fit in one byte");
+-struct pr_file { unsigned char *data; size_t size, capacity; bool present; };
++struct pr_file { char name[PR_NAME_MAX]; unsigned char *data; size_t size, capacity; bool present; };
+ struct pr_handle { uint32_t generation; size_t pos; unsigned int file; char mode; bool active; };
+ struct phone_ramfs {
+     bool enabled;
++    size_t total_capacity;
+     struct pr_file files[PR_FILES];
+     struct pr_handle handles[PR_HANDLES];
+     void *(*resize)(void *,size_t); /* NULL = realloc; test can inject ENOMEM. */
+ };
+-static const char *const pr_names[PR_FILES]={
++static const char pr_registry_prefix[]="/mnt/vendor/persist/sensors/registry/";
++static const char pr_camera_registry[]="/mnt/vendor/persist/sensors/cam_registry_dump.txt";
++static const char *const pr_names[4]={
+     "/mnt/vendor/persist/sensors/registry/registry/DIR",
+     "/mnt/vendor/persist/sensors/cam_registry_dump.txt",
+     "/mnt/vendor/persist/sensors/registry/fstempfile",
+@@ -29,8 +34,43 @@
+ static inline int pr_index(const char *name)
+ {
+     unsigned int i;
+-    for(i=0;i<PR_FILES;i++) if(!strcmp(name,pr_names[i])) return (int)i;
++    for(i=0;i<4;i++) if(!strcmp(name,pr_names[i])) return (int)i;
+     return -1;
++}
++static inline bool pr_valid_basename(const char *name)
++{
++    return name && name[0] && strcmp(name,".") && strcmp(name,"..") && !strchr(name,'/');
++}
++static inline int pr_canonical_name(const char *name,char out[PR_NAME_MAX])
++{
++    const char *base;
++    size_t length,prefix=strlen(pr_registry_prefix);
++    unsigned int i;
++    if(!name) return EINVAL;
++    for(i=0;i<4;i++)
++        if(!strcmp(name,pr_names[i])) { strcpy(out,name);return 0; }
++    base=name;
++    if(!strncmp(name,pr_registry_prefix,prefix)) base=name+prefix;
++    else if(strchr(name,'/')) return EINVAL;
++    if(!pr_valid_basename(base)) return EINVAL;
++    length=prefix+strlen(base);
++    if(length+1>PR_NAME_MAX) return ENAMETOOLONG;
++    memcpy(out,pr_registry_prefix,prefix);strcpy(out+prefix,base);return 0;
++}
++static inline bool pr_name_supported(const char *name)
++{
++    char canonical[PR_NAME_MAX];
++    return name && strchr(name,'/') && pr_canonical_name(name,canonical)==0;
++}
++static inline int pr_find(struct phone_ramfs *fs,const char *name)
++{
++    char canonical[PR_NAME_MAX];
++    unsigned int i;
++    int ret=pr_canonical_name(name,canonical);
++    if(ret) return -ret;
++    for(i=0;i<PR_FILES;i++)
++        if(fs->files[i].present && !strcmp(fs->files[i].name,canonical)) return (int)i;
++    return -ENOENT;
+ }
+ static inline bool pr_namespace(uint32_t handle) { return (handle & 0xc0000000u)==0x40000000u; }
+ static inline struct pr_handle *pr_get(struct phone_ramfs *fs,uint32_t handle)
+@@ -45,16 +85,41 @@
+ static inline int pr_reserve(struct phone_ramfs *fs,struct pr_file *f,size_t size)
+ {
+     void *next;
++    size_t growth;
+     if(size>PR_FILE_CAP) return EFBIG;
+     if(size<=f->capacity) return 0;
++    growth=size-f->capacity;
++    if(growth>PR_TOTAL_CAP-fs->total_capacity) return EFBIG;
+     next=fs->resize?fs->resize(f->data,size):realloc(f->data,size);
+     if(!next) return ENOMEM;
+-    f->data=next;f->capacity=size;return 0;
+-}
+-static inline int pr_seed(struct phone_ramfs *fs,unsigned int index,const void *data,size_t size)
+-{
++    f->data=next;fs->total_capacity+=growth;f->capacity=size;return 0;
++}
++static inline void pr_reset_file(struct phone_ramfs *fs,struct pr_file *f)
++{
++    free(f->data);fs->total_capacity-=f->capacity;
++    memset(f,0,sizeof(*f));
++}
++static inline int pr_slot(struct phone_ramfs *fs,const char *name,unsigned int *result)
++{
++    char canonical[PR_NAME_MAX];
++    unsigned int i;
++    if(!fs->enabled) return EINVAL;
++    int ret=pr_canonical_name(name,canonical);
++    if(ret) return ret;
++    for(i=0;i<PR_FILES;i++)
++        if(!strcmp(fs->files[i].name,canonical)) { *result=i;return 0; }
++    for(i=0;i<PR_FILES;i++)
++        if(!fs->files[i].present && fs->files[i].name[0]=='\0') {
++            strcpy(fs->files[i].name,canonical);*result=i;return 0;
++        }
++    return EMFILE;
++}
++static inline int pr_seed(struct phone_ramfs *fs,const char *name,const void *data,size_t size)
++{
++    unsigned int index;
+     int ret;
+-    if(!fs->enabled || index>=PR_FILES || (size && !data)) return EINVAL;
++    if(!fs->enabled || (size && !data)) return EINVAL;
++    ret=pr_slot(fs,name,&index);if(ret) return ret;
+     if(fs->files[index].present) return EEXIST;
+     ret=pr_reserve(fs,&fs->files[index],size);if(ret) return ret;
+     if(size) memcpy(fs->files[index].data,data,size);
+@@ -126,6 +191,31 @@
+     if(pos<0 || pos>(int64_t)fs->files[h->file].size) return EINVAL;
+     h->pos=(size_t)pos;return 0;
+ }
++static inline bool pr_file_has_handles(struct phone_ramfs *fs,unsigned int file)
++{
++    unsigned int i;
++    for(i=0;i<PR_HANDLES;i++) if(fs->handles[i].active && fs->handles[i].file==file) return true;
++    return false;
++}
++static inline int pr_rename(struct phone_ramfs *fs,const char *old_name,const char *new_name)
++{
++    char old_path[PR_NAME_MAX],new_path[PR_NAME_MAX];
++    unsigned int source,target;
++    int ret;
++    if(!fs->enabled) return EINVAL;
++    ret=pr_canonical_name(old_name,old_path);if(ret) return ret;
++    ret=pr_canonical_name(new_name,new_path);if(ret) return ret;
++    if(!strcmp(old_path,new_path)) return pr_find(fs,old_path)>=0?0:ENOENT;
++    ret=pr_slot(fs,old_path,&source);if(ret) return ret;
++    if(!fs->files[source].present) return ENOENT;
++    ret=pr_find(fs,new_path);
++    if(ret>=0) {
++        target=(unsigned int)ret;
++        if(pr_file_has_handles(fs,target)) return EBUSY;
++        pr_reset_file(fs,&fs->files[target]);
++    }
++    strcpy(fs->files[source].name,new_path);return 0;
++}
+ static inline void pr_destroy(struct phone_ramfs *fs)
+ {
+     unsigned int i;
+--- a/tests/test_phone_ramfs.c
++++ b/tests/test_phone_ramfs.c
+@@ -8,7 +8,7 @@
+ {
+     struct phone_ramfs fs={0};
+     uint32_t w=0,r=0,a=0,stale=0,n=0,eof=0,handles[PR_HANDLES];
+-    unsigned int i;unsigned char readbuf[8]={0};
++    unsigned int i,i0=0,i1=0;unsigned char readbuf[8]={0};
+     unsigned char *large=malloc(PR_IO_CAP);CHECK(large);memset(large,'Q',PR_IO_CAP);
+     CHECK(pr_index(pr_names[0])==0 && pr_index(pr_names[1])==1);
+     CHECK(pr_index(pr_names[2])==2 && pr_index(pr_names[3])==3);
+@@ -16,25 +16,40 @@
+     CHECK(pr_index("/mnt/vendor/persist/sensors/cam_registry_dump.txt.extra")==-1);
+     CHECK(pr_open(&fs,0,'w',&w)==EINVAL);
+     fs.enabled=true;
+-    CHECK(pr_open(&fs,0,'r',&r)==ENOENT);
+-    CHECK(pr_seed(&fs,0,"old",3)==0);
+-    CHECK(pr_seed(&fs,0,"other",5)==EEXIST);
+-    CHECK(pr_seed(&fs,1,NULL,1)==EINVAL);
+-    CHECK(pr_seed(&fs,1,large,PR_FILE_CAP+1)==EFBIG);
+-    CHECK(pr_open(&fs,0,'x',&w)==EINVAL);
+-    CHECK(pr_open(&fs,0,0,&w)==EINVAL);
+-    CHECK(pr_open(&fs,0,'r',&r)==0);
++    CHECK(pr_slot(&fs,pr_names[0],&i0)==0 && i0==0);
++    CHECK(pr_slot(&fs,pr_names[1],&i1)==0 && i1==1);
++    CHECK(pr_find(&fs,pr_names[0])==-ENOENT);
++    CHECK(pr_open(&fs,i0,'r',&r)==ENOENT);
++    CHECK(pr_seed(&fs,pr_names[0],"old",3)==0);
++    CHECK(pr_seed(&fs,pr_names[0],"other",5)==EEXIST);
++    CHECK(pr_seed(&fs,pr_names[1],NULL,1)==EINVAL);
++    CHECK(pr_seed(&fs,pr_names[1],large,PR_FILE_CAP+1)==EFBIG);
++    CHECK(pr_open(&fs,i0,'x',&w)==EINVAL);
++    CHECK(pr_open(&fs,i0,0,&w)==EINVAL);
++    CHECK(pr_open(&fs,i0,'r',&r)==0);
+     CHECK(pr_write(&fs,r,"bad",3,&n)==EACCES && n==0);
+     CHECK(pr_read(&fs,r,readbuf,2,&n,&eof)==0 && n==2 && !eof && !memcmp(readbuf,"ol",2));
+-    CHECK(pr_open(&fs,0,'w',&w)==0 && fs.files[0].size==0);
++    CHECK(pr_open(&fs,i0,'w',&w)==0 && fs.files[i0].size==0);
+     CHECK(pr_read(&fs,r,readbuf,2,&n,&eof)==0 && !n && eof);
+     CHECK(pr_seek(&fs,r,0,0)==0);
+     CHECK(pr_write(&fs,w,"abc",3,&n)==0 && n==3);
+     CHECK(pr_read(&fs,r,readbuf,8,&n,&eof)==0 && n==3 && eof && !memcmp(readbuf,"abc",3));
+-    CHECK(pr_open(&fs,0,'a',&a)==0);
++    CHECK(pr_open(&fs,i0,'a',&a)==0);
+     CHECK(pr_seek(&fs,a,0,0)==0);
+-    CHECK(pr_write(&fs,a,"d",1,&n)==0 && n==1 && fs.files[0].size==4);
+-    CHECK(!memcmp(fs.files[0].data,"abcd",4));
++    CHECK(pr_write(&fs,a,"d",1,&n)==0 && n==1 && fs.files[i0].size==4);
++    CHECK(!memcmp(fs.files[i0].data,"abcd",4));
++    CHECK(pr_rename(&fs,pr_names[0],"/mnt/vendor/persist/sensors/registry/renamed")==0);
++    CHECK(pr_find(&fs,pr_names[0])==-ENOENT);
++    CHECK(pr_find(&fs,"renamed")==(int)i0);
++    CHECK(pr_rename(&fs,"renamed",pr_names[0])==0);
++    CHECK(pr_rename(&fs,pr_names[0],"/outside/name")==EINVAL);
++    CHECK(pr_seed(&fs,pr_names[1],"target",6)==0);
++    CHECK(pr_open(&fs,i1,'r',&handles[0])==0);
++    CHECK(pr_rename(&fs,pr_names[0],pr_names[1])==EBUSY);
++    CHECK(pr_close(&fs,handles[0])==0);
++    CHECK(pr_rename(&fs,pr_names[0],pr_names[1])==0);
++    CHECK(pr_find(&fs,pr_names[0])==-ENOENT && pr_find(&fs,pr_names[1])==(int)i0);
++    CHECK(pr_rename(&fs,pr_names[1],pr_names[0])==0);
+     CHECK(pr_read(&fs,w,readbuf,1,&n,&eof)==EACCES);
+     CHECK(pr_write(&fs,w,NULL,0,&n)==0 && n==0);
+     CHECK(pr_write(&fs,w,"x",-1,&n)==EINVAL);
+@@ -48,25 +63,25 @@
+     CHECK(pr_seek(&fs,w,0,2)==0);
+     fs.resize=deny_resize;
+     CHECK(pr_write(&fs,w,large,PR_IO_CAP,&n)==ENOMEM && n==0);
+-    CHECK(fs.files[0].size==4 && pr_get(&fs,w)->pos==4 && !memcmp(fs.files[0].data,"abcd",4));
++    CHECK(fs.files[i0].size==4 && pr_get(&fs,w)->pos==4 && !memcmp(fs.files[i0].data,"abcd",4));
+     fs.resize=NULL;
+     stale=w;CHECK(pr_close(&fs,w)==0);
+-    CHECK(pr_open(&fs,1,'w',&w)==0 && w!=stale);
++    CHECK(pr_open(&fs,i1,'w',&w)==0 && w!=stale);
+     CHECK(pr_write(&fs,stale,"x",1,&n)==EBADF);
+     CHECK(pr_close(&fs,stale)==EBADF);
+     CHECK(pr_get(&fs,0)==NULL && pr_get(&fs,0x400000ffu)==NULL);
+     CHECK(pr_close(&fs,r)==0 && pr_close(&fs,a)==0);
+-    for(i=1;i<PR_HANDLES;i++) CHECK(pr_open(&fs,1,'a',&handles[i])==0);
+-    CHECK(pr_open(&fs,0,'w',&r)==EMFILE && fs.files[0].size==4);
++    for(i=1;i<PR_HANDLES;i++) CHECK(pr_open(&fs,i1,'a',&handles[i])==0);
++    CHECK(pr_open(&fs,i0,'w',&r)==EMFILE && fs.files[i0].size==4);
+     for(i=1;i<PR_HANDLES;i++) CHECK(pr_close(&fs,handles[i])==0);
+     for(i=0;i<PR_FILE_CAP/PR_IO_CAP;i++) CHECK(pr_write(&fs,w,large,PR_IO_CAP,&n)==0 && n==PR_IO_CAP);
+-    CHECK(fs.files[1].size==PR_FILE_CAP);
++    CHECK(fs.files[i1].size==PR_FILE_CAP);
+     CHECK(pr_write(&fs,w,"x",1,&n)==EFBIG && n==0);
+     CHECK(pr_write(&fs,w,NULL,0,&n)==0);
+-    CHECK(fs.files[0].size==4 && !memcmp(fs.files[0].data,"abcd",4));
++    CHECK(fs.files[i0].size==4 && !memcmp(fs.files[i0].data,"abcd",4));
+     CHECK(pr_close(&fs,w)==0);
+     for(i=0;i<PR_HANDLES;i++) fs.handles[i].generation=PR_GEN_MAX;
+-    CHECK(pr_open(&fs,0,'w',&w)==EMFILE && fs.files[0].size==4);
++    CHECK(pr_open(&fs,i0,'w',&w)==EMFILE && fs.files[i0].size==4);
+     pr_destroy(&fs);CHECK(!fs.enabled && !fs.files[0].data && !fs.files[1].data);
+     CHECK(pr_get(&fs,stale)==NULL);
+     free(large);
+--- a/tests/test_apps_std_ram.c
++++ b/tests/test_apps_std_ram.c
+@@ -24,6 +24,7 @@
+ #define FCLOSE_SC REMOTE_SCALARS_MAKE(3, 1, 0)
+ #define FFLUSH_SC REMOTE_SCALARS_MAKE(2, 1, 0)
+ #define FSEEK_SC REMOTE_SCALARS_MAKE(9, 1, 0)
++#define FRENAME_SC REMOTE_SCALARS_MAKE(31, 3, 0)
+ 
+ static struct fastrpc_interface *apps_std;
+ 
+@@ -163,6 +164,19 @@
+     const void *bufs[1]={primary};uint32_t lens[1]={sizeof(primary)};
+     struct fastrpc_io_buffer *returned;
+     uint32_t result=invoke(FSEEK_SC,1,bufs,lens,dispatch_ret,&returned);
++    if(returned) iobuf_free(0,returned);
++    return result;
++}
++
++static uint32_t rename_ram(const char *old_name,const char *new_name,
++                           int *dispatch_ret)
++{
++    uint32_t primary[3]={htole32(33),htole32(strlen(old_name)+1),
++                         htole32(strlen(new_name)+1)};
++    const void *bufs[3]={primary,old_name,new_name};
++    uint32_t lens[3]={sizeof(primary),strlen(old_name)+1,strlen(new_name)+1};
++    struct fastrpc_io_buffer *returned;
++    uint32_t result=invoke(FRENAME_SC,3,bufs,lens,dispatch_ret,&returned);
+     if(returned) iobuf_free(0,returned);
+     return result;
+ }
+@@ -247,6 +261,16 @@
+        || dispatch_ret || write_ram(fd,"tmp",3,&written,&eof,&dispatch_ret) ||
+        dispatch_ret || written!=3) fail("fstempfile RAM write");
+     if(simple_word(FCLOSE_SC,fd,0,1,&dispatch_ret) || dispatch_ret) fail("close fstempfile");
++    if(rename_ram(path2,"/mnt/vendor/persist/sensors/registry/fstempfile-renamed",
++                  &dispatch_ret) || dispatch_ret) fail("rename fstempfile");
++    if(open_ram("/mnt/vendor/persist/sensors/registry/fstempfile-renamed","r",
++                "ADSP_LIBRARY_PATH",";",strlen("/mnt/vendor/persist/sensors/registry/fstempfile-renamed")+1,
++                &fd,&dispatch_ret) || dispatch_ret) fail("open renamed fstempfile");
++    if(read_ram(fd,3,buf,&read,&eof,&dispatch_ret) || dispatch_ret || read!=3 ||
++       eof || memcmp(buf,"tmp",3)) fail("read renamed fstempfile");
++    if(simple_word(FCLOSE_SC,fd,0,1,&dispatch_ret) || dispatch_ret) fail("close renamed fstempfile");
++    if(rename_ram("/mnt/vendor/persist/sensors/registry/fstempfile-renamed",path2,
++                  &dispatch_ret) || dispatch_ret) fail("restore fstempfile name");
+     if(open_ram(path3,"w","ADSP_LIBRARY_PATH",";",strlen(path3)+1,&fd,&dispatch_ret)
+        || dispatch_ret || write_ram(fd,"csv",3,&written,&eof,&dispatch_ret) ||
+        dispatch_ret || written!=3) fail("parsed file list RAM write");

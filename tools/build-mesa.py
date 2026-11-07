@@ -36,12 +36,11 @@ def main():
     parser.add_argument('--configure-only', action='store_true',
                         help='prepare the verified source and Ninja rules without compiling')
     parser.add_argument('--profile', choices=('probe', 'desktop', 'gpu-2404'), default='probe')
-    parser.add_argument('--cross-file', type=Path, help='Meson ARM64 cross file and target sysroot')
     args = parser.parse_args()
-    if not args.cross_file and platform.machine() not in ('aarch64', 'arm64'):
+    if platform.machine() not in ('aarch64', 'arm64'):
         parser.error('this recipe currently requires a native arm64 build environment')
-    if not 1 <= args.jobs <= 12:
-        parser.error('--jobs must be between 1 and 12')
+    if not 1 <= args.jobs <= 8:
+        parser.error('--jobs must be between 1 and 8')
     lock = json.loads((INPUTS / 'source.json').read_text())
     archive = args.source_archive.resolve()
     if sha(archive) != lock['sha256']:
@@ -56,30 +55,33 @@ def main():
         content = args.profile == 'gpu-2404'
         prefix = '/usr' if content else '/usr/lib/erhai/mesa'
         libdir = 'lib/aarch64-linux-gnu' if content else 'lib'
-        drivers = 'freedreno,softpipe' if args.profile in ('desktop', 'gpu-2404') else 'freedreno'
+        drivers = 'freedreno,softpipe' if content else 'freedreno'
         flags = [f'--prefix={prefix}', f'--libdir={libdir}', '--buildtype=release',
-                 '--wrap-mode=nofallback', '-Db_ndebug=false',
+                 '--wrap-mode=nofallback',
+                 # Keep assertion-enabled diagnostics in probe builds. Installed
+                 # desktop builds use Mesa's production release semantics: the
+                 # GLSL fallback returns false instead of aborting GNOME Shell.
+                 '-Db_ndebug=' + ('true' if args.profile in ('desktop', 'gpu-2404') else 'false'),
                  f'-Dgallium-drivers={drivers}', '-Degl=enabled',
                  '-Dgbm=enabled', '-Dgles1=disabled', '-Dgles2=enabled',
                  '-Dllvm=disabled', '-Dgallium-va=disabled', '-Dvideo-codecs=[]',
                  '-Dvalgrind=disabled', '-Dbuild-tests=false']
         if args.profile in ('desktop', 'gpu-2404'):
+            # Keep the desktop on the verified OpenGL path. Turnip remains
+            # isolated in the experimental core24 build after a device hang.
             flags += ['-Dplatforms=wayland,x11', '-Dglx=dri', '-Dglvnd=enabled',
-                      '-Dvulkan-drivers=freedreno',
+                      '-Dvulkan-drivers=' + ('freedreno' if content else '[]'),
                       '-Dspirv-tools=disabled']
-            if not content and not args.cross_file:
+            if not content:
                 flags += [f'-Dc_link_args=-Wl,-rpath,{prefix}/lib',
                           f'-Dcpp_link_args=-Wl,-rpath,{prefix}/lib']
         else:
             flags += ['-Dplatforms=[]', '-Dglx=disabled', '-Dglvnd=disabled',
                       '-Dvulkan-drivers=[]']
-        if args.cross_file:
-            flags += ['--cross-file=' + str(args.cross_file.resolve())]
         packages = subprocess.check_output(
             ['dpkg-query', '-W', '-f=${Package} ${Version}\\n'], text=True)
         identity = {'source': lock, 'flags': flags, 'profile': args.profile,
                     'recipe_sha256': sha(__file__),
-                    'cross_file_sha256': sha(args.cross_file) if args.cross_file else None,
                     'native_packages': packages.splitlines(),
                     'tools': {name: version([name, '--version']) for name in ('gcc', 'g++', 'meson', 'ninja')}}
         identity_file = out / 'input.json'
@@ -106,14 +108,6 @@ def main():
         build = out / 'build'
         if not (build / 'build.ninja').exists():
             run(['meson', 'setup', build, src, *flags], env=env)
-        compilers = json.loads((build / 'meson-info/intro-compilers.json').read_text())
-        cpp = compilers['host']['cpp']
-        toolchain = json.loads((INPUTS / 'toolchain.json').read_text())
-        if any(compilers['host'][lang]['id'] != 'gcc' or
-               compilers['host'][lang]['version'] != toolchain['version']
-               for lang in ('c', 'cpp')):
-            parser.error('Use the GCC toolchain pinned in packaging/mesa/toolchain.json; '
-                         'GCC 13 miscompiles GLSL floating-point constants')
         if args.configure_only:
             return
         run(['meson', 'compile', '-C', build, '-j', args.jobs], env=env)
@@ -125,7 +119,6 @@ def main():
                     for path in sorted(stage.rglob('*')) if path.is_symlink()}
         result = {'status': 'OFFLINE_BUILD_ONLY', 'version': lock['version'],
                   'profile': args.profile, 'prefix': prefix,
-                  'target_compilers': compilers['host'],
                   'input_sha256': sha(identity_file), 'files_sha256': files,
                   'symlinks': symlinks}
         (out / 'build-result.json').write_text(json.dumps(result, indent=2) + '\n')

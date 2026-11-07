@@ -1,0 +1,257 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH] power: qcom-battmgr: phone-only OTG reads and opt-in bounded lease
+
+Exact dodge identity, shared serialized legacy AP17/SWITCH18 transport.
+Default read-only behavior remains; explicit boot opt-in exposes one fixed
+120-second lease with GET verification and best-effort reverse rollback.
+No automatic write, VBUS/GPIO/TypeC override, OEM fallback or retry after
+ambiguous transport failure. UNKNOWN is not successful cleanup.
+Source: OnePlusOSS d50b305f oplus_hal_adsp.c/.h. GPL-2.0-only.
+
+--- a/drivers/power/supply/qcom_battmgr.c
++++ b/drivers/power/supply/qcom_battmgr.c
+@@ -15,6 +15,11 @@
+ #include <linux/soc/qcom/pmic_glink.h>
+ #include <linux/math.h>
+ #include <linux/units.h>
++#include <linux/of.h>
++#include <linux/spinlock.h>
++#include <linux/string.h>
++#include "oneplus13-otg-protocol.h"
++#include "oneplus13-otg-lease.h"
+ 
+ #define BATTMGR_CHEMISTRY_LEN	4
+ #define BATTMGR_STRING_LEN	128
+@@ -333,6 +338,22 @@
+ 
+ 	bool service_up;
+ 
++	/* Optional phone-only requests; ambiguity forbids reuse in this boot. */
++	spinlock_t op13_otg_lock;
++	struct completion op13_otg_ack;
++	int op13_otg_error;
++	bool op13_otg_pending;
++	bool op13_otg_poisoned;
++	unsigned int op13_otg_opcode;
++	unsigned int op13_otg_property;
++	unsigned int op13_otg_value;
++	struct op13_otg_lease op13_otg_lease;
++	struct delayed_work op13_otg_restore_work;
++	u64 op13_otg_deadline;
++	bool op13_otg_stopping;
++	bool op13_otg_awake;
++	struct wakeup_source *op13_otg_wakeup;
++
+ 	struct qcom_battmgr_info info;
+ 	struct qcom_battmgr_status status;
+ 	struct qcom_battmgr_ac ac;
+@@ -1586,11 +1607,77 @@
+ 	complete(&battmgr->ack);
+ }
+ 
++/* ABL rewrites root identity. Reuse the existing exact SPR phone gate;
++ * generic qcom,sun alone never exposes this vendor interface.
++ */
++static bool op13_otg_machine(void)
++{
++	struct device_node *root;
++	const char *model, *chassis;
++	bool match = false;
++
++	root = of_find_node_by_path("/");
++	if (!root)
++		return false;
++	if (of_property_read_string(root, "model", &model) ||
++	    of_property_read_string(root, "chassis-type", &chassis) ||
++	    strcmp(chassis, "handset"))
++		goto out;
++	if (!strcmp(model, "OnePlus 13 (AA569 native display experimental candidate)"))
++		match = of_device_is_compatible(root, "oneplus,dodge") &&
++			of_device_is_compatible(root, "qcom,sm8750");
++	else if (!strcmp(model, "Qualcomm Technologies, Inc. Sun MTP,dodge"))
++		match = of_device_is_compatible(root, "qcom,sun");
++out:
++	of_node_put(root);
++	return match;
++}
++
+ static void qcom_battmgr_callback(const void *data, size_t len, void *priv)
+ {
+ 	const struct pmic_glink_hdr *hdr = data;
+ 	struct qcom_battmgr *battmgr = priv;
+-	unsigned int opcode = le32_to_cpu(hdr->opcode);
++	unsigned int opcode;
++	unsigned long flags;
++
++	if (!data || len < sizeof(*hdr))
++		return;
++	opcode = le32_to_cpu(hdr->opcode);
++
++	/* Do not let unrelated power responses acknowledge this optional read.
++	 * Read-only vendor OTG properties use the existing client/serialization.
++	 */
++	spin_lock_irqsave(&battmgr->op13_otg_lock, flags);
++	if (battmgr->op13_otg_pending) {
++		unsigned int value;
++		int matched;
++
++		if (opcode == BATTMGR_NOTIFICATION) {
++			spin_unlock_irqrestore(&battmgr->op13_otg_lock, flags);
++			qcom_battmgr_notification(battmgr, data, len);
++			return;
++		}
++		matched = len == 24 ?
++			op13_otg_decode(data, 24, battmgr->op13_otg_opcode,
++					 battmgr->op13_otg_property, &value) : 0;
++		if (matched) {
++			/* Only the first exact reply owns this completion. */
++			battmgr->op13_otg_pending = false;
++			battmgr->op13_otg_error = matched < 0 ? -EREMOTEIO : 0;
++			if (matched > 0)
++				battmgr->op13_otg_value = value;
++			complete(&battmgr->op13_otg_ack);
++		}
++		spin_unlock_irqrestore(&battmgr->op13_otg_lock, flags);
++		return;
++	}
++	spin_unlock_irqrestore(&battmgr->op13_otg_lock, flags);
++	/* A late optional response must not complete an ordinary battery read. */
++	if (op13_otg_machine() &&
++	    len >= 16 && (opcode == OP13_OTG_GET || opcode == OP13_OTG_SET) &&
++	    (op13_otg_le32((const unsigned char *)data + 12) == OP13_OTG_AP_ENABLE ||
++	     op13_otg_le32((const unsigned char *)data + 12) == OP13_OTG_SWITCH))
++		return;
+ 
+ 	if (opcode == BATTMGR_NOTIFICATION)
+ 		qcom_battmgr_notification(battmgr, data, len);
+@@ -1601,6 +1688,60 @@
+ 		qcom_battmgr_sm8350_callback(battmgr, data, len);
+ }
+ 
++#include "oneplus13-otg-kernel.h"
++
++static ssize_t op13_otg_show(struct device *dev, unsigned int property, char *buf)
++{
++	struct qcom_battmgr *battmgr = dev_get_drvdata(dev);
++	unsigned int value = 0;
++	int ret;
++
++	if (!op13_otg_machine())
++		return -EOPNOTSUPP;
++	mutex_lock(&battmgr->lock);
++	ret = op13_otg_transfer(battmgr, OP13_OTG_GET, property, &value);
++	mutex_unlock(&battmgr->lock);
++	return ret ? ret : sysfs_emit(buf, "%u\n", value);
++}
++
++static ssize_t oneplus13_otg_ap_enable_show(struct device *dev,
++					 struct device_attribute *attr, char *buf)
++{
++	return op13_otg_show(dev, OP13_OTG_AP_ENABLE, buf);
++}
++
++static ssize_t oneplus13_otg_switch_show(struct device *dev,
++				      struct device_attribute *attr, char *buf)
++{
++	return op13_otg_show(dev, OP13_OTG_SWITCH, buf);
++}
++
++static struct device_attribute dev_attr_oneplus13_otg_ap_enable =
++	__ATTR(oneplus13_otg_ap_enable, 0400, oneplus13_otg_ap_enable_show, NULL);
++static struct device_attribute dev_attr_oneplus13_otg_switch =
++	__ATTR(oneplus13_otg_switch, 0400, oneplus13_otg_switch_show, NULL);
++static struct attribute *op13_otg_attrs[] = {
++	&dev_attr_oneplus13_otg_ap_enable.attr,
++	&dev_attr_oneplus13_otg_switch.attr,
++	&dev_attr_oneplus13_otg_lease.attr,
++	NULL,
++};
++
++static umode_t op13_otg_visible(struct kobject *kobj, struct attribute *attr, int n)
++{
++	if (!op13_otg_machine())
++		return 0;
++	if (attr == &dev_attr_oneplus13_otg_lease.attr &&
++	    !oneplus13_otg_lease_enabled)
++		return 0;
++	return attr->mode;
++}
++
++static const struct attribute_group op13_otg_group = {
++	.attrs = op13_otg_attrs,
++	.is_visible = op13_otg_visible,
++};
++
+ static void qcom_battmgr_enable_worker(struct work_struct *work)
+ {
+ 	struct qcom_battmgr *battmgr = container_of(work, struct qcom_battmgr, enable_work);
+@@ -1611,7 +1752,13 @@
+ 	};
+ 	int ret;
+ 
++	mutex_lock(&battmgr->lock);
++	if (READ_ONCE(battmgr->op13_otg_stopping)) {
++		mutex_unlock(&battmgr->lock);
++		return;
++	}
+ 	ret = qcom_battmgr_request(battmgr, &req, sizeof(req));
++	mutex_unlock(&battmgr->lock);
+ 	if (ret)
+ 		dev_err(battmgr->dev, "failed to request power notifications\n");
+ }
+@@ -1619,13 +1766,20 @@
+ static void qcom_battmgr_pdr_notify(void *priv, int state)
+ {
+ 	struct qcom_battmgr *battmgr = priv;
+-
+-	if (state == SERVREG_SERVICE_STATE_UP) {
+-		battmgr->service_up = true;
++	unsigned long flags;
++
++	spin_lock_irqsave(&battmgr->op13_otg_lock, flags);
++	if (state == SERVREG_SERVICE_STATE_UP && !battmgr->op13_otg_stopping) {
++		WRITE_ONCE(battmgr->service_up, true);
+ 		schedule_work(&battmgr->enable_work);
+ 	} else {
+-		battmgr->service_up = false;
+-	}
++		/* Preserve initial DOWN, but never reuse optional tuples after loss. */
++		if (READ_ONCE(battmgr->service_up) ||
++		    READ_ONCE(battmgr->op13_otg_pending))
++			WRITE_ONCE(battmgr->op13_otg_poisoned, true);
++		WRITE_ONCE(battmgr->service_up, false);
++	}
++	spin_unlock_irqrestore(&battmgr->op13_otg_lock, flags);
+ }
+ 
+ static const struct of_device_id qcom_battmgr_of_variants[] = {
+@@ -1727,6 +1881,9 @@
+ 	INIT_WORK(&battmgr->enable_work, qcom_battmgr_enable_worker);
+ 	mutex_init(&battmgr->lock);
+ 	init_completion(&battmgr->ack);
++	init_completion(&battmgr->op13_otg_ack);
++	spin_lock_init(&battmgr->op13_otg_lock);
++	INIT_DELAYED_WORK(&battmgr->op13_otg_restore_work, op13_otg_restore_worker);
+ 
+ 	match = of_match_device(qcom_battmgr_of_variants, dev->parent);
+ 	if (match)
+@@ -1810,9 +1967,18 @@
+ 	if (IS_ERR(battmgr->client))
+ 		return PTR_ERR(battmgr->client);
+ 
++	if (oneplus13_otg_lease_enabled && op13_otg_machine()) {
++		battmgr->op13_otg_wakeup = wakeup_source_register(dev, "oneplus13-otg-lease");
++		if (!battmgr->op13_otg_wakeup)
++			return -ENOMEM;
++	}
++	ret = devm_add_action_or_reset(dev, op13_otg_lease_remove, battmgr);
++	if (ret)
++		return ret;
+ 	pmic_glink_client_register(battmgr->client);
+ 
+-	return 0;
++	dev_set_drvdata(dev, battmgr);
++	return devm_device_add_group(dev, &op13_otg_group);
+ }
+ 
+ static const struct auxiliary_device_id qcom_battmgr_id_table[] = {

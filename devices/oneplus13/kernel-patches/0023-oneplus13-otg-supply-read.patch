@@ -1,0 +1,386 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH] power: qcom-battmgr: default-off phone supply GET diagnostics
+
+Reference d9383c7 supplies USB through properties64/24 after permissions17/18.
+Probe readability first without adding supply setters or automatic requests.
+Preserve the old17/18 decoder, lease, watchdog and hardware helpers unchanged.
+Source: OnePlusOSS d50b305f and linux-sm8750-erhai d9383c7. GPL-2.0-only.
+
+--- a/drivers/power/supply/qcom_battmgr.c
++++ b/drivers/power/supply/qcom_battmgr.c
+@@ -1,102 +1,109 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ /*
+  * Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
+  * Copyright (c) 2022, Linaro Ltd
+  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+  */
+ #include <linux/auxiliary_bus.h>
+ #include <linux/module.h>
+ #include <linux/mutex.h>
+ #include <linux/nvmem-consumer.h>
+ #include <linux/of_device.h>
+ #include <linux/power_supply.h>
+ #include <linux/property.h>
+ #include <linux/soc/qcom/pdr.h>
+ #include <linux/soc/qcom/pmic_glink.h>
+ #include <linux/math.h>
+ #include <linux/units.h>
+ #include <linux/of.h>
+ #include <linux/spinlock.h>
+ #include <linux/string.h>
+ #include "oneplus13-otg-protocol.h"
+ #include "oneplus13-otg-lease.h"
++#include <linux/moduleparam.h>
++#include "oneplus13-otg-supply-read.h"
++
++/* Separate GET-only probe: never enables the supply or an old lease. */
++static bool oneplus13_otg_supply_read;
++module_param_named(oneplus13_otg_supply_read, oneplus13_otg_supply_read, bool, 0400);
++MODULE_PARM_DESC(oneplus13_otg_supply_read, "Manual phone-only GET24/GET64; no supply setters");
+ 
+ #define BATTMGR_CHEMISTRY_LEN	4
+ #define BATTMGR_STRING_LEN	128
+ 
+ enum qcom_battmgr_variant {
+ 	QCOM_BATTMGR_SC8280XP,
+ 	QCOM_BATTMGR_SM8350,
+ 	QCOM_BATTMGR_SM8550,
+ 	QCOM_BATTMGR_X1E80100,
+ };
+ 
+ /* Battery current is positive while discharging */
+ #define QCOM_BATTMGR_QUIRK_BATT_CURRENT_INVERTED	BIT(0)
+ /* BATT_POWER_NOW does not follow the battery power */
+ #define QCOM_BATTMGR_QUIRK_NO_BATT_POWER_NOW		BIT(1)
+ /* The charge control opcode and properties mean something else */
+ #define QCOM_BATTMGR_QUIRK_NO_CHARGE_CONTROL		BIT(2)
+ 
+ #define BATTMGR_BAT_STATUS		0x1
+ 
+ #define BATTMGR_REQUEST_NOTIFICATION	0x4
+ 
+ #define BATTMGR_NOTIFICATION		0x7
+ #define NOTIF_BAT_PROPERTY		0x30
+ #define NOTIF_USB_PROPERTY		0x32
+ #define NOTIF_WLS_PROPERTY		0x34
+ #define NOTIF_BAT_STATUS		0x80
+ #define NOTIF_BAT_INFO			0x81
+ #define NOTIF_BAT_CHARGING_STATE	0x83
+ 
+ #define BATTMGR_BAT_INFO		0x9
+ 
+ #define BATTMGR_BAT_DISCHARGE_TIME	0xc
+ 
+ #define BATTMGR_BAT_CHARGE_TIME		0xd
+ 
+ #define BATTMGR_BAT_PROPERTY_GET	0x30
+ #define BATTMGR_BAT_PROPERTY_SET	0x31
+ #define BATT_STATUS			0
+ #define BATT_HEALTH			1
+ #define BATT_PRESENT			2
+ #define BATT_CHG_TYPE			3
+ #define BATT_CAPACITY			4
+ #define BATT_SOH			5
+ #define BATT_VOLT_OCV			6
+ #define BATT_VOLT_NOW			7
+ #define BATT_VOLT_MAX			8
+ #define BATT_CURR_NOW			9
+ #define BATT_CHG_CTRL_LIM		10
+ #define BATT_CHG_CTRL_LIM_MAX		11
+ #define BATT_TEMP			12
+ #define BATT_TECHNOLOGY			13
+ #define BATT_CHG_COUNTER		14
+ #define BATT_CYCLE_COUNT		15
+ #define BATT_CHG_FULL_DESIGN		16
+ #define BATT_CHG_FULL			17
+ #define BATT_MODEL_NAME			18
+ #define BATT_TTF_AVG			19
+ #define BATT_TTE_AVG			20
+ #define BATT_RESISTANCE			21
+ #define BATT_POWER_NOW			22
+ #define BATT_POWER_AVG			23
+ #define BATT_CHG_CTRL_EN		24
+ #define BATT_CHG_CTRL_START_THR		25
+ #define BATT_CHG_CTRL_END_THR		26
+ 
+ #define BATTMGR_USB_PROPERTY_GET	0x32
+ #define BATTMGR_USB_PROPERTY_SET	0x33
+ #define USB_ONLINE			0
+ #define USB_VOLT_NOW			1
+ #define USB_VOLT_MAX			2
+ #define USB_CURR_NOW			3
+ #define USB_CURR_MAX			4
+ #define USB_INPUT_CURR_LIMIT		5
+ #define USB_TYPE			6
+ #define USB_ADAP_TYPE			7
+ #define USB_MOISTURE_DET_EN		8
+ #define USB_MOISTURE_DET_STS		9
+ 
+ #define BATTMGR_WLS_PROPERTY_GET	0x34
+@@ -1583,230 +1590,264 @@
+ 		case WLS_VOLT_MAX:
+ 			battmgr->wireless.voltage_max = le32_to_cpu(resp->intval.value);
+ 			break;
+ 		case WLS_CURR_NOW:
+ 			battmgr->wireless.current_now = le32_to_cpu(resp->intval.value);
+ 			break;
+ 		case WLS_CURR_MAX:
+ 			battmgr->wireless.current_max = le32_to_cpu(resp->intval.value);
+ 			break;
+ 		default:
+ 			dev_warn(battmgr->dev, "unknown property %#x\n", property);
+ 			break;
+ 		}
+ 		break;
+ 	case BATTMGR_REQUEST_NOTIFICATION:
+ 	case BATTMGR_CHG_CTRL_LIMIT_EN:
+ 		battmgr->error = 0;
+ 		break;
+ 	default:
+ 		dev_warn(battmgr->dev, "unknown message %#x\n", opcode);
+ 		break;
+ 	}
+ 
+ out_complete:
+ 	complete(&battmgr->ack);
+ }
+ 
+ /* ABL rewrites root identity. Reuse the existing exact SPR phone gate;
+  * generic qcom,sun alone never exposes this vendor interface.
+  */
+ static bool op13_otg_machine(void)
+ {
+ 	struct device_node *root;
+ 	const char *model, *chassis;
+ 	bool match = false;
+ 
+ 	root = of_find_node_by_path("/");
+ 	if (!root)
+ 		return false;
+ 	if (of_property_read_string(root, "model", &model) ||
+ 	    of_property_read_string(root, "chassis-type", &chassis) ||
+ 	    strcmp(chassis, "handset"))
+ 		goto out;
+ 	if (!strcmp(model, "OnePlus 13 (AA569 native display experimental candidate)"))
+ 		match = of_device_is_compatible(root, "oneplus,dodge") &&
+ 			of_device_is_compatible(root, "qcom,sm8750");
+ 	else if (!strcmp(model, "Qualcomm Technologies, Inc. Sun MTP,dodge"))
+ 		match = of_device_is_compatible(root, "qcom,sun");
+ out:
+ 	of_node_put(root);
+ 	return match;
+ }
+ 
+ static void qcom_battmgr_callback(const void *data, size_t len, void *priv)
+ {
+ 	const struct pmic_glink_hdr *hdr = data;
+ 	struct qcom_battmgr *battmgr = priv;
+ 	unsigned int opcode;
+ 	unsigned long flags;
+ 
+ 	if (!data || len < sizeof(*hdr))
+ 		return;
+ 	opcode = le32_to_cpu(hdr->opcode);
+ 
+ 	/* Do not let unrelated power responses acknowledge this optional read.
+ 	 * Read-only vendor OTG properties use the existing client/serialization.
+ 	 */
+ 	spin_lock_irqsave(&battmgr->op13_otg_lock, flags);
+ 	if (battmgr->op13_otg_pending) {
+ 		unsigned int value;
+ 		int matched;
+ 
+ 		if (opcode == BATTMGR_NOTIFICATION) {
+ 			spin_unlock_irqrestore(&battmgr->op13_otg_lock, flags);
+ 			qcom_battmgr_notification(battmgr, data, len);
+ 			return;
+ 		}
+ 		matched = len == 24 ?
+ 			op13_otg_decode(data, 24, battmgr->op13_otg_opcode,
+ 					 battmgr->op13_otg_property, &value) : 0;
++		if (!matched && oneplus13_otg_supply_read && op13_otg_machine())
++			matched = op13_otg_supply_read_decode(data, len,
++				battmgr->op13_otg_opcode, battmgr->op13_otg_property, &value);
+ 		if (matched) {
+ 			/* Only the first exact reply owns this completion. */
+ 			battmgr->op13_otg_pending = false;
+ 			battmgr->op13_otg_error = matched < 0 ? -EREMOTEIO : 0;
+ 			if (matched > 0)
+ 				battmgr->op13_otg_value = value;
+ 			complete(&battmgr->op13_otg_ack);
+ 		}
+ 		spin_unlock_irqrestore(&battmgr->op13_otg_lock, flags);
+ 		return;
+ 	}
+ 	spin_unlock_irqrestore(&battmgr->op13_otg_lock, flags);
+ 	/* A late optional response must not complete an ordinary battery read. */
+ 	if (op13_otg_machine() &&
+ 	    len >= 16 && (opcode == OP13_OTG_GET || opcode == OP13_OTG_SET) &&
+ 	    (op13_otg_le32((const unsigned char *)data + 12) == OP13_OTG_AP_ENABLE ||
+-	     op13_otg_le32((const unsigned char *)data + 12) == OP13_OTG_SWITCH))
++	     op13_otg_le32((const unsigned char *)data + 12) == OP13_OTG_SWITCH ||
++	     (oneplus13_otg_supply_read &&
++	      (op13_otg_le32((const unsigned char *)data + 12) == OP13_OTG_VBUS_ENABLE ||
++	       op13_otg_le32((const unsigned char *)data + 12) == OP13_OTG_BOOST_CURRENT))))
+ 		return;
+ 
+ 	if (opcode == BATTMGR_NOTIFICATION)
+ 		qcom_battmgr_notification(battmgr, data, len);
+ 	else if (battmgr->variant == QCOM_BATTMGR_SC8280XP ||
+ 		 battmgr->variant == QCOM_BATTMGR_X1E80100)
+ 		qcom_battmgr_sc8280xp_callback(battmgr, data, len);
+ 	else
+ 		qcom_battmgr_sm8350_callback(battmgr, data, len);
+ }
+ 
+ #include "oneplus13-otg-kernel.h"
+ 
+ static ssize_t op13_otg_show(struct device *dev, unsigned int property, char *buf)
+ {
+ 	struct qcom_battmgr *battmgr = dev_get_drvdata(dev);
+ 	unsigned int value = 0;
+ 	int ret;
+ 
+ 	if (!op13_otg_machine())
+ 		return -EOPNOTSUPP;
+ 	mutex_lock(&battmgr->lock);
+ 	ret = op13_otg_transfer(battmgr, OP13_OTG_GET, property, &value);
+ 	mutex_unlock(&battmgr->lock);
+ 	return ret ? ret : sysfs_emit(buf, "%u\n", value);
+ }
+ 
+ static ssize_t oneplus13_otg_ap_enable_show(struct device *dev,
+ 					 struct device_attribute *attr, char *buf)
+ {
+ 	return op13_otg_show(dev, OP13_OTG_AP_ENABLE, buf);
+ }
+ 
+ static ssize_t oneplus13_otg_switch_show(struct device *dev,
+ 				      struct device_attribute *attr, char *buf)
+ {
+ 	return op13_otg_show(dev, OP13_OTG_SWITCH, buf);
+ }
+ 
+ static struct device_attribute dev_attr_oneplus13_otg_ap_enable =
+ 	__ATTR(oneplus13_otg_ap_enable, 0400, oneplus13_otg_ap_enable_show, NULL);
+ static struct device_attribute dev_attr_oneplus13_otg_switch =
+ 	__ATTR(oneplus13_otg_switch, 0400, oneplus13_otg_switch_show, NULL);
++/* No store methods and no automatic reads. The old lease stays 17/18-only. */
++static ssize_t oneplus13_otg_vbus_enable_show(struct device *dev,
++		struct device_attribute *attr, char *buf)
++{
++	if (!oneplus13_otg_supply_read)
++		return -EOPNOTSUPP;
++	return op13_otg_show(dev, OP13_OTG_VBUS_ENABLE, buf);
++}
++
++static ssize_t oneplus13_otg_boost_current_show(struct device *dev,
++		struct device_attribute *attr, char *buf)
++{
++	if (!oneplus13_otg_supply_read)
++		return -EOPNOTSUPP;
++	return op13_otg_show(dev, OP13_OTG_BOOST_CURRENT, buf);
++}
++
++static struct device_attribute dev_attr_oneplus13_otg_vbus_enable =
++	__ATTR(oneplus13_otg_vbus_enable, 0400, oneplus13_otg_vbus_enable_show, NULL);
++static struct device_attribute dev_attr_oneplus13_otg_boost_current =
++	__ATTR(oneplus13_otg_boost_current, 0400, oneplus13_otg_boost_current_show, NULL);
++
+ static struct attribute *op13_otg_attrs[] = {
+ 	&dev_attr_oneplus13_otg_ap_enable.attr,
+ 	&dev_attr_oneplus13_otg_switch.attr,
+ 	&dev_attr_oneplus13_otg_lease.attr,
++	&dev_attr_oneplus13_otg_vbus_enable.attr,
++	&dev_attr_oneplus13_otg_boost_current.attr,
+ 	NULL,
+ };
+ 
+ static umode_t op13_otg_visible(struct kobject *kobj, struct attribute *attr, int n)
+ {
+ 	if (!op13_otg_machine())
++		return 0;
++	if (!oneplus13_otg_supply_read &&
++	    (attr == &dev_attr_oneplus13_otg_vbus_enable.attr ||
++	     attr == &dev_attr_oneplus13_otg_boost_current.attr))
+ 		return 0;
+ 	if (attr == &dev_attr_oneplus13_otg_lease.attr &&
+ 	    !oneplus13_otg_lease_enabled)
+ 		return 0;
+ 	return attr->mode;
+ }
+ 
+ static const struct attribute_group op13_otg_group = {
+ 	.attrs = op13_otg_attrs,
+ 	.is_visible = op13_otg_visible,
+ };
+ 
+ static void qcom_battmgr_enable_worker(struct work_struct *work)
+ {
+ 	struct qcom_battmgr *battmgr = container_of(work, struct qcom_battmgr, enable_work);
+ 	struct qcom_battmgr_enable_request req = {
+ 		.hdr.owner = cpu_to_le32(PMIC_GLINK_OWNER_BATTMGR),
+ 		.hdr.type = cpu_to_le32(PMIC_GLINK_NOTIFY),
+ 		.hdr.opcode = cpu_to_le32(BATTMGR_REQUEST_NOTIFICATION),
+ 	};
+ 	int ret;
+ 
+ 	mutex_lock(&battmgr->lock);
+ 	if (READ_ONCE(battmgr->op13_otg_stopping)) {
+ 		mutex_unlock(&battmgr->lock);
+ 		return;
+ 	}
+ 	ret = qcom_battmgr_request(battmgr, &req, sizeof(req));
+ 	mutex_unlock(&battmgr->lock);
+ 	if (ret)
+ 		dev_err(battmgr->dev, "failed to request power notifications\n");
+ }
+ 
+ static void qcom_battmgr_pdr_notify(void *priv, int state)
+ {
+ 	struct qcom_battmgr *battmgr = priv;
+ 	unsigned long flags;
+ 
+ 	spin_lock_irqsave(&battmgr->op13_otg_lock, flags);
+ 	if (state == SERVREG_SERVICE_STATE_UP && !battmgr->op13_otg_stopping) {
+ 		WRITE_ONCE(battmgr->service_up, true);
+ 		schedule_work(&battmgr->enable_work);
+ 	} else {
+ 		/* Preserve initial DOWN, but never reuse optional tuples after loss. */
+ 		if (READ_ONCE(battmgr->service_up) ||
+ 		    READ_ONCE(battmgr->op13_otg_pending))
+ 			WRITE_ONCE(battmgr->op13_otg_poisoned, true);
+ 		WRITE_ONCE(battmgr->service_up, false);
+ 	}
+ 	spin_unlock_irqrestore(&battmgr->op13_otg_lock, flags);
+ }
+ 
+ static const struct of_device_id qcom_battmgr_of_variants[] = {
+ 	{ .compatible = "qcom,glymur-pmic-glink", .data = (void *)QCOM_BATTMGR_X1E80100 },
+ 	{ .compatible = "qcom,kaanapali-pmic-glink", .data = (void *)QCOM_BATTMGR_SM8550 },
+ 	{ .compatible = "qcom,sc8180x-pmic-glink", .data = (void *)QCOM_BATTMGR_SC8280XP },
+ 	{ .compatible = "qcom,sc8280xp-pmic-glink", .data = (void *)QCOM_BATTMGR_SC8280XP },
+ 	{ .compatible = "qcom,sm8550-pmic-glink", .data = (void *)QCOM_BATTMGR_SM8550 },
+ 	{ .compatible = "qcom,x1e80100-pmic-glink", .data = (void *)QCOM_BATTMGR_X1E80100 },
+ 	/* Unmatched devices falls back to QCOM_BATTMGR_SM8350 */
+ 	{}
+ };
+ 
+ /*
+  * Devices whose firmware follows the protocol of their SoC but reports some
+  * values with a different meaning.
+  */
+ static const struct of_device_id qcom_battmgr_of_quirks[] = {
+ 	{
+ 		.compatible = "oneplus,pad2pro-pmic-glink",
+ 		.data = (void *)(QCOM_BATTMGR_QUIRK_BATT_CURRENT_INVERTED |
+ 				 QCOM_BATTMGR_QUIRK_NO_BATT_POWER_NOW |
+ 				 QCOM_BATTMGR_QUIRK_NO_CHARGE_CONTROL),
+ 	},
+ 	{}
+ };
+ 
+ static bool qcom_battmgr_bat_prop_hidden(struct qcom_battmgr *battmgr,
+ 					 enum power_supply_property psp)
+ {

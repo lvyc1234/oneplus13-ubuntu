@@ -1,0 +1,25 @@
+[Unit]
+Description=OnePlus 13 automatic USB OTG power policy
+ConditionKernelCommandLine=qcom_battmgr.oneplus13_otg_auto=1
+After=systemd-udev-trigger.service local-fs.target
+
+[Service]
+Type=simple
+RuntimeDirectory=oneplus13-auto-otg
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+ExecStart=/usr/bin/python3 /usr/libexec/oneplus13-auto-otg.py
+ExecStopPost=/usr/bin/python3 /usr/libexec/oneplus13-auto-otg.py --close
+TimeoutStopSec=12
+Restart=no
+UMask=0077
+NoNewPrivileges=yes
+PrivateDevices=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=-/sys/bus/auxiliary/devices/pmic_glink.power-supply.0/oneplus13_otg_auto
+ReadWritePaths=/run/oneplus13-auto-otg
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

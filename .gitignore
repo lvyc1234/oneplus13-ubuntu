@@ -1,6 +1,7 @@
 /out/
 /cache/
 /keys/
+/test-work/
 __pycache__/
 *.pyc
 /kernel/*

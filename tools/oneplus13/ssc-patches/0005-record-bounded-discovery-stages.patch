@@ -1,0 +1,94 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH] phone libssc: bound candidates and report numeric discovery stages
+
+--- a/src/libssc-sensor.c
++++ b/src/libssc-sensor.c
+@@ -21,6 +21,7 @@
+ #include "ssc-common.pb-c.h"
+ #include "ssc-sensor-suid.pb-c.h"
+ #include "libssc-sensor.h"
++#include "libssc-phone-probe.h"
+ 
+ #define MAX_RETRIES 100
+ 
+@@ -338,6 +339,21 @@
+ 		/* Ignore if data type does not match due to concurrency */
+ 		if (g_strcmp0 (suid_msg->data_type, priv->data_type) != 0) {
+ 			ssc_suid_response__free_unpacked (suid_msg, NULL);
++			return;
++		}
++
++		/* Public numeric diagnostics only; never print UIDs or vendor strings. */
++		if (ssc_phone_metadata_only_locked ())
++			g_printerr ("SSC_PHONE_LOOKUP type=%s default=%u count=%zu\n",
++				priv->data_type, !priv->light_discover_all, suid_msg->n_uid);
++		if (suid_msg->n_uid > 16) {
++			ssc_suid_response__free_unpacked (suid_msg, NULL);
++			g_signal_handler_disconnect (self, priv->report_id);
++			priv->report_id = 0;
++			g_task_return_new_error (ctx->task, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
++					 "Phone SUID response exceeds the reviewed candidate bound");
++			g_clear_object (&ctx->task);
++			g_slice_free (ReportReceivedContext, ctx);
+ 			return;
+ 		}
+ 
+@@ -473,6 +489,11 @@
+ 		} else
+ 			g_debug ("  mount-matrix: undefined");
+ 
++		if (ssc_phone_metadata_only_locked ())
++			g_printerr ("SSC_PHONE_ATTRIBUTES type=%s candidate=%u available=%u matrix=%u\n",
++				priv->data_type, priv->light_discover_all ? priv->light_uid_index + 1 : 1,
++				priv->available, mount_matrix_attribute_populated);
++
+ 		/* Sensor initialized, complete task and stop listening */
+ 		if (ctx->task) {
+ 			if (priv->light_discover_all && !priv->available &&
+--- a/tests/phone-sensor-properties.inc
++++ b/tests/phone-sensor-properties.inc
+@@ -33,9 +33,44 @@
+     g_array_unref(bytes);g_object_unref(sensor);
+ }
+ 
++
++/* Feed a real protobuf event into the actual receive callback. No QMI client
++ * exists: removing the bound wrongly proceeds into an attribute send and fails.
++ */
++static void reject_oversized_uid_response(void)
++{
++    SSCSensor *sensor = g_object_new(SSC_TYPE_SENSOR, NULL);
++    SSCClient *client = g_object_new(SSC_TYPE_CLIENT, NULL);
++    SSCSensorPrivate *priv = ssc_sensor_get_instance_private(sensor);
++    priv->data_type=g_strdup("ambient_light");priv->service_available=TRUE;
++    ReportReceivedContext *ctx=g_slice_new0(ReportReceivedContext);
++    ctx->sensor=sensor;ctx->task=g_task_new(sensor,NULL,NULL,NULL);
++    GTask *task=g_object_ref(ctx->task);
++    priv->report_id=g_signal_connect(client,"report",G_CALLBACK(report_received),ctx);
++    SscUid ids[17];SscUid *pointers[17];
++    for(guint i=0;i<17;i++) {
++        ssc_uid__init(&ids[i]);ids[i].high=i+1;ids[i].low=i+2;pointers[i]=&ids[i];
++    }
++    SscSuidResponse response=SSC_SUID_RESPONSE__INIT;
++    response.data_type="ambient_light";response.n_uid=17;response.uid=pointers;
++    GArray *bytes=g_array_new(FALSE,FALSE,1);
++    g_array_set_size(bytes,ssc_suid_response__get_packed_size(&response));
++    ssc_suid_response__pack(&response,(guint8*)bytes->data);
++    report_received(client,SSC_MSG_RESPONSE_SUID,SSC_SENSOR_UID_SUID_HIGH,
++                    SSC_SENSOR_UID_SUID_LOW,bytes,ctx);
++    GError *error=NULL;
++    g_assert_false(g_task_propagate_boolean(task,&error));
++    g_assert_error(error,G_IO_ERROR,G_IO_ERROR_INVALID_DATA);
++    g_assert_cmpuint(priv->light_uid_count,==,0);
++    g_assert_cmpuint(priv->report_id,==,0);
++    g_clear_error(&error);g_array_unref(bytes);g_object_unref(task);
++    g_object_unref(client);g_object_unref(sensor);
++}
++
+ int main(int argc, char **argv)
+ {
+     g_test_init(&argc, &argv, NULL);
++    reject_oversized_uid_response();
+     SSCSensor *sensor = g_object_new(SSC_TYPE_SENSOR, NULL);
+     SSCSensorPrivate *priv = ssc_sensor_get_instance_private(sensor);
+     GObjectClass *klass = G_OBJECT_GET_CLASS(sensor);

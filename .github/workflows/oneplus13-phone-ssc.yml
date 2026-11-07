@@ -1,0 +1,80 @@
+name: OnePlus 13 metadata-only SSC probe
+on:
+  push:
+    branches: [oneplus13-platform-handoff-20261026]
+    paths:
+      - .github/workflows/oneplus13-phone-ssc.yml
+      - tools/oneplus13/build-phone-ssc-probe.py
+      - tools/oneplus13/ssc-patches/**
+      - tools/oneplus13/ram-ssc-metadata.py
+      - tools/oneplus13/qemu-ssc-metadata-selftest.py
+      - tests/test_oneplus13_ssc_metadata.py
+      - tools/oneplus13/ram-sensor-discovery.py
+      - tools/oneplus13/ram-sensor-fileserver.py
+      - tools/oneplus13/qemu-sensor-discovery-selftest.py
+      - tests/test_oneplus13_sensor_discovery.py
+  workflow_dispatch:
+    inputs:
+      use_server:
+        description: Use the owner's trusted ARM64 component runner
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      use_server:
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: oneplus13-phone-ssc-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  ssc:
+    runs-on: ${{ inputs.use_server && fromJSON('["self-hosted", "Linux", "ARM64", "oneplus13-arm64"]') || fromJSON('["ubuntu-24.04-arm"]') }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare native offline build dependencies
+        run: |
+          flock /tmp/oneplus13-apt-update.lock sudo apt-get update -q
+          flock /tmp/oneplus13-apt.lock sudo apt-get -o DPkg::Lock::Timeout=600 install -y --no-install-recommends gcc binutils ninja-build patch pkg-config python3-dev python3-venv libglib2.0-dev libqmi-glib-dev libmbim-glib-dev libqrtr-glib-dev libprotobuf-c-dev protobuf-c-compiler protobuf-compiler ca-certificates libgudev-1.0-dev libpolkit-gobject-1-dev dbus-daemon
+          pkg-config --exists glib-2.0 gio-unix-2.0 qmi-glib qrtr-glib libprotobuf-c
+          python3 -m venv "$RUNNER_TEMP/phone-ssc-meson"
+          "$RUNNER_TEMP/phone-ssc-meson/bin/pip" install meson==1.10.1
+          test "$(uname -m)" = aarch64
+      - name: Build guarded probe and test without QRTR or hardware
+        run: |
+          python3 -m unittest discover -s tests -p test_oneplus13_ssc_metadata.py -v
+          python3 -m unittest discover -s tests -p test_oneplus13_ssc_samples.py -v
+          python3 -m unittest discover -s tests -p test_oneplus13_sensor_fileserver.py -v
+          python3 -m unittest discover -s tests -p test_oneplus13_sensor_discovery.py -v
+          python3 -m unittest discover -s tests -p test_oneplus13_sensor_inputs_candidate.py -v
+          python3 tools/oneplus13/build-phone-ssc-probe.py --meson "$RUNNER_TEMP/phone-ssc-meson/bin/meson" --output out/phone-ssc
+          python3 tools/oneplus13/build-phone-sensor-runtime.py --meson "$RUNNER_TEMP/phone-ssc-meson/bin/meson" --ssc-build out/phone-ssc --output out/phone-sensor-runtime
+          python3 tools/oneplus13/reviewed-sensor-inputs.py --data devices/oneplus13/qualified-data/sensors/reviewed-runtime-data.json --native out/phone-sensor-runtime/phone-sensor-runtime-arm64.tar.gz --manifest out/phone-sensor-runtime/phone-sensor-runtime-manifest.json --output out/phone-ssc/sensor-inputs
+          mkdir -p out/phone-ssc/runtime-evidence
+          cp out/phone-sensor-runtime/phone-sensor-runtime-manifest.json out/phone-sensor-runtime/runtime-build.log out/phone-sensor-runtime/LICENSE-* out/phone-ssc/runtime-evidence/
+          cp out/phone-sensor-runtime/phone-rpc/verification.json out/phone-ssc/runtime-evidence/phone-rpc-verification.json
+      - name: Preserve public source evidence and isolated probe
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oneplus13-phone-ssc-${{ github.sha }}
+          path: |
+            out/phone-ssc/phone-ssc-probe-arm64.tar.gz
+            out/phone-ssc/phone-ssc-probe-manifest.json
+            out/phone-ssc/phone-ssc-samples-arm64.tar.gz
+            out/phone-ssc/phone-ssc-samples-manifest.json
+            out/phone-ssc/verification.json
+            out/phone-ssc/build.log
+            out/phone-ssc/LICENSE-*
+            out/phone-ssc/COPYRIGHT.txt
+            out/phone-ssc/sensor-inputs/
+            out/phone-ssc/runtime-evidence/
+            out/phone-ssc/release/meson-logs/testlog-phoneoffline.txt
+            out/phone-ssc/sanitized/meson-logs/testlog-phoneoffline.txt
+          if-no-files-found: error
+          retention-days: 14

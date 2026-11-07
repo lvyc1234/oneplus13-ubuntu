@@ -1,0 +1,82 @@
+From: Nihal Kumar Gupta <nihal.gupta@oss.qualcomm.com>
+Date: Sat, 17 Oct 2026 22:43:13 +0530
+Subject: [PATCH RFC 6/6] phy: qcom: mipi-csi2: Add lane mask calculation  for C-PHY
+Message-Id: <20261017-cphy_support-v1-6-8b0e1237ce95@oss.qualcomm.com>
+
+C-PHY uses trio lanes instead of D-PHY data+clock lanes. The existing
+lane power-up mask hard-codes D-PHY bit positions and cannot represent
+C-PHY trios.
+
+Extract csiphy_get_lane_mask() and select the correct bit pattern based
+on the configured PHY mode. For C-PHY, data lane bits are shifted by one
+to target trio positions [1,3,5]; for D-PHY, the clock lane bit and
+even-numbered data bits [0,2,4,6] are set as before.
+
+Signed-off-by: Nihal Kumar Gupta <nihal.gupta@oss.qualcomm.com>
+---
+ drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c | 40 ++++++++++++++++------
+ 1 file changed, 30 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c b/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c
+index d93fd9845b50bd7e5623013aecd6db42dd491dca..5e7036cb7205d75c988a281eced60658b45c73c3 100644
+--- a/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c
++++ b/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c
+@@ -322,6 +322,35 @@ static u8 phy_qcom_cphy_settle_cnt(struct mipi_csi2phy_stream_cfg *cfg,
+ 	return settle_cnt;
+ }
+ 
++static u8 csiphy_get_lane_mask(struct mipi_csi2phy_lanes_cfg *lane_cfg,
++			       enum phy_mode mode, u8 num_data)
++{
++	u8 lane_mask = 0;
++	u8 offset = 0;
++
++	switch (mode) {
++	case PHY_MODE_MIPI_CPHY:
++		offset = 1;
++		break;
++	case PHY_MODE_MIPI_DPHY:
++		lane_mask = BIT(lane_cfg->clk.pos);
++		break;
++	default:
++		break;
++	}
++
++	/*
++	 * CSI_COMMON_CTRL5 is a physical lane power-up bitmap:
++	 * - Bits [0,2,4,6] → D-PHY data lanes(LN0, LN2, LN4, LN6)
++	 * - Bits [1,3,5] → C-PHY trio lanes(LN1, LN3, LN5)
++	 * - Bit [7] → D-PHY clock lane(LNCK) dedicated clock enable
++	 */
++	for (int i = 0; i < num_data; i++)
++		lane_mask |= BIT((lane_cfg->data[i].pos * 2) + offset);
++
++	return lane_mask;
++}
++
+ static int phy_qcom_mipi_csi2_lanes_enable(struct mipi_csi2phy_device *csi2phy,
+ 					   struct mipi_csi2phy_stream_cfg *cfg)
+ {
+@@ -351,16 +380,7 @@ static int phy_qcom_mipi_csi2_lanes_enable(struct mipi_csi2phy_device *csi2phy,
+ 	if (!settle_cnt)
+ 		return -ENODEV;
+ 
+-	/*
+-	 * CSI_COMMON_CTRL5 is a physical lane power-up bitmap:
+-	 * - Bits [0,2,4,6] → D-PHY data lanes(LN0, LN2, LN4, LN6)
+-	 * - Bits [1,3,5] → C-PHY trio lanes(LN1, LN3, LN5)
+-	 * - Bit [7] → D-PHY clock lane(LNCK) dedicated clock enable
+-	 */
+-	val = BIT(lane_cfg->clk.pos);
+-	for (i = 0; i < cfg->num_data_lanes; i++)
+-		val |= BIT(lane_cfg->data[i].pos * 2);
+-
++	val = csiphy_get_lane_mask(lane_cfg, csi2phy->phy_mode, cfg->num_data_lanes);
+ 	writel(val, csi2phy->base +
+ 	       CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->common_regs_offset, 5));
+ 
+
+-- 
+2.34.1
+
+

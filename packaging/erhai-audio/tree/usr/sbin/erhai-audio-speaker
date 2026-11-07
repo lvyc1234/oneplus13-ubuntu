@@ -1,13 +1,19 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: GPL-2.0-only
-"""Persistently offer or withdraw the internal speakers.
+"""Offer or withdraw the internal speakers for the running boot.
 
-enable   remove the persistent opt-out and restart users' sound servers.
-disable  save the opt-out, restart the sound servers and close an idle route.
-status   show the persistent policy, route, gain controls and default sinks.
+enable   create /run/erhai-audio/speaker-enabled, which the board's UCM
+         profile tests before it includes the Speaker device, then restart
+         each user's PipeWire and WirePlumber so they read the profile again.
+         The speakers become an output device -- the only one besides
+         headsets, so the default -- at the capped levels in Speaker.conf.
+disable  remove the flag, restart the sound servers the same way, then close
+         the speaker route if it is still open and nothing plays through it.
+status   read only: the flag, the route and gain controls, each user's
+         default sink.
 
-Speakers are enabled by default. Changes survive suspend and reboot.
-Use --no-restart to apply the policy at the next sound-server start or boot.
+Nothing outside /run is written, so a reboot always comes back without the
+speakers. No packaged or distribution file is changed.
 """
 import argparse
 import os
@@ -17,7 +23,7 @@ import re
 import subprocess
 import sys
 
-FLAG = 'var/lib/erhai/audio/speaker-disabled'
+FLAG = 'run/erhai-audio/speaker-enabled'
 CARD = 'OnePlus-Pad-2-Pro'
 ROUTE = 'Secondary TDM0 Audio Mixer MultiMedia1'
 GAINS = tuple(f'Amp{n} PCM Playback Volume' for n in (0, 1, 2, 3, 5, 6)) + (
@@ -97,16 +103,17 @@ class System:
     def enable(self, restart):
         if self.card() is None:
             raise Refused(f'no {CARD} sound card')
-        self.flag.unlink(missing_ok=True)
-        self.log('speakers enabled persistently')
+        self.flag.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+        self.flag.write_text('enabled by erhai-audio-speaker for this boot\n')
+        self.flag.chmod(0o644)
+        self.log(f'wrote {self.flag}')
         if restart:
             self.restart_sound()
 
     def disable(self, restart):
-        self.flag.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
-        self.flag.write_text('disabled by erhai-audio-speaker\n')
-        self.flag.chmod(0o644)
-        self.log('speakers disabled persistently')
+        if self.flag.exists():
+            self.flag.unlink()
+            self.log(f'removed {self.flag}')
         if restart:
             self.restart_sound()
         card = self.card()
@@ -123,7 +130,7 @@ class System:
             self.log('closed the speaker route')
 
     def status(self):
-        rows = [('speakers', 'disabled' if self.flag.exists() else 'enabled')]
+        rows = [('flag', 'present' if self.flag.exists() else 'absent')]
         card = self.card()
         rows.append(('card', card if card is not None else 'absent'))
         if card is not None:
@@ -140,12 +147,12 @@ def main(argv=None, system=None):
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest='command', required=True)
-    for name, text in (('enable', 'offer the speakers persistently'),
+    for name, text in (('enable', 'offer the speakers until reboot'),
                        ('disable', 'withdraw the speakers')):
         sub = commands.add_parser(name, help=text)
         sub.add_argument('--no-restart', action='store_true',
                          help='only change the flag; the sound servers pick it up when they restart')
-    commands.add_parser('status', help='show the policy, controls and default sinks')
+    commands.add_parser('status', help='show the flag, controls and default sinks')
     args = parser.parse_args(argv)
     system = system or System()
     if args.command != 'status' and os.geteuid() != 0 and system.root == Path('/'):

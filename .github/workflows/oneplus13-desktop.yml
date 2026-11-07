@@ -1,0 +1,108 @@
+name: OnePlus 13 RAM GNOME handoff
+
+on:
+  push:
+    branches: [oneplus13-bringup]
+    paths: [.github/workflows/oneplus13-desktop.yml]
+  workflow_dispatch:
+    inputs:
+      rootfs-run-id:
+        description: Verified base desktop rootfs run (missing artifact builds fresh)
+        default: '39809729390'
+        required: false
+      rootfs-artifact-name:
+        description: Exact verified base rootfs artifact name
+        default: oneplus13-ubuntu-26.04.1-gnome-a0ca88ee403a719be4333502bae78997066a2b6f
+        required: false
+      rootfs-exact:
+        description: Test initramfs only using the exact verified rootfs bytes
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: oneplus13-desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  desktop:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install userspace build and emulator tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends squashfs-tools zstd qemu-system-arm device-tree-compiler
+      - name: Check handoff packaging and shell syntax
+        run: |
+          python3 -m unittest discover -s tests -p test_oneplus13_desktop.py -v
+          for file in devices/oneplus13/desktop/*; do sh -n "$file"; done
+          bash -n tools/oneplus13/rootfs.sh
+      - uses: actions/download-artifact@v4
+        with:
+          name: oneplus13-offline-c2e659aaa062647a206c67edcc421f0fa9931f7a
+          run-id: 39992904871
+          github-token: ${{ github.token }}
+          path: out/oneplus13-desktop-kernel
+      - name: Independently verify the pinned kernel artifact
+        run: python3 tools/oneplus13/verify.py --artifacts out/oneplus13-desktop-kernel
+      - uses: actions/download-artifact@v4
+        with:
+          name: oneplus13-matching-stock-firmware-460bf80ab651d523965ab88994bc11e64035883d
+          run-id: 40002870490
+          github-token: ${{ github.token }}
+          path: out/oneplus13-desktop-firmware
+      - name: Fetch reusable GNOME userspace
+        id: base
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.rootfs-artifact-name || 'oneplus13-ubuntu-26.04.1-gnome-a0ca88ee403a719be4333502bae78997066a2b6f' }}
+          run-id: ${{ inputs.rootfs-run-id || '39809729390' }}
+          github-token: ${{ github.token }}
+          path: out/oneplus13-desktop-base
+      - name: Refresh phone support in verified GNOME base
+        if: steps.base.outcome == 'success' && !inputs.rootfs-exact
+        run: |
+          sudo python3 tools/oneplus13/refresh-desktop.py --base out/oneplus13-desktop-base \
+            --kernel out/oneplus13-desktop-kernel --firmware out/oneplus13-desktop-firmware
+      - name: Retain exact verified rootfs for an initramfs-only experiment
+        if: steps.base.outcome == 'success' && inputs.rootfs-exact
+        run: cp -a out/oneplus13-desktop-base out/oneplus13-rootfs-artifacts
+      - name: Build GNOME with matching modules and opt-in RAM services
+        if: steps.base.outcome != 'success'
+        run: |
+          sudo env ONEPLUS13_KERNEL_ARTIFACT="$PWD/out/oneplus13-desktop-kernel" \
+            ONEPLUS13_STOCK_FIRMWARE="$PWD/out/oneplus13-desktop-firmware" \
+            bash tools/oneplus13/rootfs.sh
+      - name: Verify built SquashFS and actual ARM64 executables
+        run: |
+          sudo python3 tools/oneplus13/verify-rootfs.py out/oneplus13-rootfs-artifacts \
+            --report out/oneplus13-rootfs-artifacts/download-verification.json
+      # Retain verified userspace even if the later handoff experiment fails.
+      - uses: actions/upload-artifact@v4
+        if: ${{ !inputs.rootfs-exact || steps.base.outcome != 'success' }}
+        with:
+          name: oneplus13-desktop-rootfs-${{ github.sha }}
+          path: out/oneplus13-rootfs-artifacts/
+          retention-days: 14
+          compression-level: 0
+          if-no-files-found: error
+      - name: Boot the actual GNOME rootfs through switch_root in QEMU
+        run: |
+          python3 tools/oneplus13/desktop.py --kernel out/oneplus13-desktop-kernel \
+            --rootfs out/oneplus13-rootfs-artifacts/rootfs.squashfs \
+            --output out/oneplus13-desktop --qemu --qemu-http
+      - uses: actions/upload-artifact@v4
+        if: always() && !cancelled()
+        with:
+          name: oneplus13-desktop-handoff-${{ github.sha }}
+          path: out/oneplus13-desktop/
+          retention-days: 14
+          if-no-files-found: ignore

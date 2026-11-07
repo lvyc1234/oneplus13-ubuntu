@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0-only
+[Unit]
+Description=OnePlus 13 powered-off charging
+Requires=basic.target oneplus13-charger.service
+After=basic.target oneplus13-charger.service
+AllowIsolate=yes

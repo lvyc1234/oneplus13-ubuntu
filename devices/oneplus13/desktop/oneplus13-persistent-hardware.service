@@ -1,0 +1,11 @@
+[Unit]
+Description=Initialize OnePlus 13 native display and touch on the installed system
+ConditionKernelCommandLine=oneplus13.persistent=1
+After=local-fs.target systemd-udev-trigger.service
+Before=display-manager.service gdm.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/python3 /run/oneplus13/persistent/persistent-hardware.py
+TimeoutStartSec=120

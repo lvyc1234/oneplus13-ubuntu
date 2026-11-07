@@ -1,0 +1,2 @@
+# Protect every physical block node, including removable LUNs without media.
+ACTION=="add|change", SUBSYSTEM=="block", KERNEL!="loop*|ram*|zram*", TEST=="/run/oneplus13/ram-session", RUN+="/usr/bin/python3 /usr/libexec/oneplus13-readonly-block.py %N"

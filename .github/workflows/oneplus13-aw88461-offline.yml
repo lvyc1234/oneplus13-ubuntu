@@ -1,0 +1,43 @@
+name: OnePlus 13 AW88461 offline component
+on:
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install compiler dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential bc bison flex libssl-dev libelf-dev
+      - name: Parser sanitizer and actual power-function fault injection
+        run: python3 tools/oneplus13/audio-draft/check.py --output out/audio-component
+      - name: Compile against pinned phone kernel API without integration
+        run: |
+          set -euo pipefail
+          pin=7a81d184e3098624d4342d8f4eff5e23674bcc9f
+          git init out/linux
+          git -C out/linux remote add origin https://github.com/yzddmr6/linux-sm8750-erhai.git
+          git -C out/linux fetch --depth 1 origin "$pin"
+          git -C out/linux checkout --detach FETCH_HEAD
+          test "$(git -C out/linux rev-parse HEAD)" = "$pin"
+          cp tools/oneplus13/audio-draft/aw88461.c tools/oneplus13/audio-draft/aw88461-profile.h out/linux/sound/soc/codecs/
+          make -C out/linux ARCH=arm64 defconfig > out/audio-component/configure.log 2>&1
+          make -C out/linux ARCH=arm64 -j"$(nproc)" W=1 KCFLAGS=-Werror sound/soc/codecs/aw88461.o sound/soc/codecs/aw88395/aw88395_lib.o 2>&1 | tee out/audio-component/compile.log
+          file out/linux/sound/soc/codecs/aw88461.o | tee out/audio-component/object-format.txt
+          readelf -h out/linux/sound/soc/codecs/aw88461.o | grep -q AArch64
+          cp out/linux/sound/soc/codecs/aw88461.o out/audio-component/
+          printf 'OFFLINE_OBJECT_COMPILE_ONLY\nNo phone DT integration, module installation or hardware acceptance.\n' > out/audio-component/SCOPE.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: oneplus13-aw88461-offline-${{ github.sha }}
+          path: out/audio-component/
+          if-no-files-found: error
+          retention-days: 7

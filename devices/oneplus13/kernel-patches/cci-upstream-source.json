@@ -1,0 +1,64 @@
+{
+  "scope": "UPSTREAM_CCI_BACKPORT_CANDIDATE_NOT_HARDWARE_QUALIFICATION",
+  "kernel_pin": "7a81d184e3098624d4342d8f4eff5e23674bcc9f",
+  "upstream_commits": [
+    {
+      "commit": "d07c7775ca17c4123164806d6210f22dd62cef4f",
+      "subject": "i2c: qcom-cci: Switch msm8953 to the CCI v2 timing/rate config",
+      "url": "https://github.com/torvalds/linux/commit/d07c7775ca17c4123164806d6210f22dd62cef4f",
+      "original_message": "i2c: qcom-cci: Switch msm8953 to the CCI v2 timing/rate config\n\nThe msm8953 CCI timing table is internally inconsistent. Its Standard\nand Fast timings match v1/v1.5, which are calibrated for a 19.2 MHz CCI\nclock, but its Fast+ timings are essentially the 'v2' values, which are\ncalibrated for 37.5 MHz. Since all masters share a single CCI clock,\nno single rate can satisfy all three modes with the current table, and\nthe DT assigns 19.2 MHz, so Fast+ timings are wrong.\n\nThe msm8953 CCI is the same hardware version as msm8996/sdm630, which\nalready use the cci_v2_data config (37.5 MHz). 37.5 MHz is supported by\nthe msm8953 CCI RCG, so reuse cci_v2_data for msm8953 as well and drop\nthe redundant, inconsistent standalone table. This makes all three I2C\nmodes self-consistent under a single clock rate.\n\nNote this requires the CCI clock to run at 37.5 MHz, the driver selects\nand enforces the proper rate in following patches.\n\nSigned-off-by: Loic Poulain <loic.poulain@oss.qualcomm.com>\nReviewed-by: Konrad Dybcio <konrad.dybcio@oss.qualcomm.com>\nReviewed-by: Vladimir Zapolskiy <vladimir.zapolskiy@linaro.org>\nSigned-off-by: Andi Shyti <andi.shyti@kernel.org>\nLink: https://patch.msgid.link/20260929-cci-clk-fix-v6-1-62a268cccb0f@oss.qualcomm.com"
+    },
+    {
+      "commit": "e2ac856c74518976c76b8736363c64a84ebbd155",
+      "subject": "i2c: qcom-cci: Support per-mode CCI clock rates",
+      "url": "https://github.com/torvalds/linux/commit/e2ac856c74518976c76b8736363c64a84ebbd155",
+      "original_message": "i2c: qcom-cci: Support per-mode CCI clock rates\n\nThe CCI hw_params timing values (thigh, tlow, etc.) are expressed in\nclock ticks and are only valid at the specific CCI clock rate they were\ncalibrated for. Different I2C modes may be calibrated for different\nrates, and the single CCI clock is shared by all masters.\n\nTurn the timing table into a two-dimensional [rate][mode] matrix so a\ngiven rate can carry timing sets for each mode, and select the entry\nmatching the currently running clock rate at init time. The existing\nper-variant values are moved under their calibrated rate (19.2 MHz for\nv1/v1.5, 37.5 MHz for v2), no timing values are changed.\n\nAt this stage the driver only validates the running rate against the\ntable, the timings are only valid at the exact rate they were calibrated\nfor, so if the current rate has no matching entry for a master's mode,\nfail initialization rather than program incorrect timings. A following\npatch actively enforces the required rate so this becomes a safety net.\n\nSuggested-by: Vladimir Zapolskiy <vladimir.zapolskiy@linaro.org>\nSigned-off-by: Loic Poulain <loic.poulain@oss.qualcomm.com>\nReviewed-by: Konrad Dybcio <konrad.dybcio@oss.qualcomm.com>\nReviewed-by: Vladimir Zapolskiy <vladimir.zapolskiy@linaro.org>\nSigned-off-by: Andi Shyti <andi.shyti@kernel.org>\nLink: https://patch.msgid.link/20260929-cci-clk-fix-v6-2-62a268cccb0f@oss.qualcomm.com"
+    },
+    {
+      "commit": "04ec5e09518b2fafe03540a0c93df858be99cefd",
+      "subject": "i2c: qcom-cci: Add 19.2 MHz timings for the v2 CCI",
+      "url": "https://github.com/torvalds/linux/commit/04ec5e09518b2fafe03540a0c93df858be99cefd",
+      "original_message": "i2c: qcom-cci: Add 19.2 MHz timings for the v2 CCI\n\nThe v2 CCI (msm8996/sdm630/msm8953/...) is normally clocked at 37.5 MHz,\nbut its CCI clock can also be configured and run at 19.2 MHz. Add the\nStandard and Fast timing sets calibrated for 19.2 MHz so that a v2\ncontroller left at that rate still has valid timings for those modes\n(Fast+ requires 37.5 MHz).\n\nThe values mirror the v1/v1.5 19.2 MHz Standard/Fast timings, which\nshare the same CCI clock rate.\n\nNote the \"v1\"/\"v1.5\"/\"v2\" labels are arbitrary driver-internal names for\nthe cci_data configs, not actual CCI hardware version numbers (the real\nhw versions are e.g. v1.0.7 on msm8974, v1.4.0 on msm8996, v1.6.3 on\nsdm630/660, ...). They only distinguish the timing/mode configurations\nused by the driver, and will be subsequently removed.\n\nSigned-off-by: Loic Poulain <loic.poulain@oss.qualcomm.com>\nReviewed-by: Konrad Dybcio <konrad.dybcio@oss.qualcomm.com>\nReviewed-by: Vladimir Zapolskiy <vladimir.zapolskiy@linaro.org>\nSigned-off-by: Andi Shyti <andi.shyti@kernel.org>\nLink: https://patch.msgid.link/20260929-cci-clk-fix-v6-3-62a268cccb0f@oss.qualcomm.com"
+    },
+    {
+      "commit": "826a1d134c3ea80d6cc2cd763bda7a374ae2be9f",
+      "subject": "i2c: qcom-cci: Share the timing table across CCI revisions",
+      "url": "https://github.com/torvalds/linux/commit/826a1d134c3ea80d6cc2cd763bda7a374ae2be9f",
+      "original_message": "i2c: qcom-cci: Share the timing table across CCI revisions\n\nThe hw_params timing values only depend on the CCI clock rate and the\nI2C mode, not on the hardware revision: every per-variant table used\nidentical values for a given [rate][mode]. Only the set of supported\nmodes differs between revisions.\n\nMove the timings into a single shared cci_hw_params[rate][mode] table\nand describe each variant's highest supported mode in cci_data with\nmax_mode instead of duplicating the timing values. This removes the\nper-variant timing tables without any functional change.\n\nSuggested-by: Vladimir Zapolskiy <vladimir.zapolskiy@linaro.org>\nSigned-off-by: Loic Poulain <loic.poulain@oss.qualcomm.com>\nReviewed-by: Konrad Dybcio <konrad.dybcio@oss.qualcomm.com>\nReviewed-by: Vladimir Zapolskiy <vladimir.zapolskiy@linaro.org>\nSigned-off-by: Andi Shyti <andi.shyti@kernel.org>\nLink: https://patch.msgid.link/20260929-cci-clk-fix-v6-4-62a268cccb0f@oss.qualcomm.com"
+    },
+    {
+      "commit": "fa1eb3af12fa71964ff965726bd65c69a76d1de7",
+      "subject": "i2c: qcom-cci: Enforce the required CCI clock rate",
+      "url": "https://github.com/torvalds/linux/commit/fa1eb3af12fa71964ff965726bd65c69a76d1de7",
+      "original_message": "i2c: qcom-cci: Enforce the required CCI clock rate\n\nThe CCI hw_params timing values are only valid at the specific clock\nrate they were calibrated for. A previous change made the driver select\nthe timing set matching the currently running clock rate, but the rate\nitself was still left to the DT (assigned-clock-rates) or the bootloader,\nwhich is fragile: if no rate is enforced the timings may not match and\nviolate the I2C specification.\n\nActively drive the CCI clock to the rate required by the configured\nmodes. The single CCI clock is shared by all masters, which may run in\ndifferent modes, so cci_get_required_rate() picks the lowest rate that\nhas a valid timing set for every active master's mode. This avoids\nclocking the bus faster than necessary while still satisfying every\nmaster (e.g. a Fast+ master forces 37.5 MHz).\n\nApply the rate through the OPP framework so that boards describing an\nopp table also get the required power-domain/regulator votes for that rate.\nBoards without an OPP table simply fall back to plain clk_set_rate()\nbehavior, so existing DTs keep working.\n\nDrop the now-redundant hw_params[].thigh check in cci_get_hw_params(),\ncci_get_required_rate() already rejects rates lacking a valid timing\nset for an active master's mode.\n\nSuggested-by: Konrad Dybcio <konrad.dybcio@oss.qualcomm.com>\nSigned-off-by: Loic Poulain <loic.poulain@oss.qualcomm.com>\nSigned-off-by: Andi Shyti <andi.shyti@kernel.org>\nLink: https://patch.msgid.link/20260929-cci-clk-fix-v6-5-62a268cccb0f@oss.qualcomm.com"
+    },
+    {
+      "commit": "0265dfc5d2a8de303561ced996c46b38f95cb4ef",
+      "subject": "i2c: qcom-cci: always enable SCL clock stretching",
+      "url": "https://github.com/torvalds/linux/commit/0265dfc5d2a8de303561ced996c46b38f95cb4ef",
+      "original_message": "i2c: qcom-cci: always enable SCL clock stretching\n\nThe CCI timing tables leave SCL clock stretching disabled. A slave that\nholds SCL low is then not waited for: the master keeps its own clock\ntiming and the transfer fails with a NACK or returns corrupt data.\n\nThis is hit with a camera reached through a GMSL serializer/deserializer\nI2C tunnel (MAX9296A/MAX96717 on the RB3 Gen2 vision mezzanine). The\ndeserializer acknowledges the address locally, but forwards the\ntransaction over the coax link and stretches SCL until the remote side\nhas completed it, which takes well over one clock period at 100 kHz.\nWithout stretching the register reads of the sensor behind the link\nintermittently return garbage and writes are dropped, which shows up as\nrandom sensor init failures.\n\nClock stretching is part of the I2C specification for every speed mode\nand a device that does not stretch is unaffected by enabling it, so set\nthe bit unconditionally in cci_init() and drop the per-table\nscl_stretch_en field, which is zero in every table.\n\nSigned-off-by: Hitesh Patel <hitesh@ebytelogic.com>\nReviewed-by: Loic Poulain <loic.poulain@oss.qualcomm.com>\nTested-by: Hangxiang Ma <hangxiang.ma@oss.qualcomm.com> # S5KJN5 on Kaanapali\nSigned-off-by: Andi Shyti <andi.shyti@kernel.org>\nLink: https://patch.msgid.link/20261007050147.274096-1-hitesh@ebytelogic.com"
+    },
+    {
+      "commit": "ed404d9fd36b826f43e85a7c7cc77b3d966cf83d",
+      "subject": "i2c: qcom-cci: skip core clock rates the clock cannot provide",
+      "url": "https://github.com/torvalds/linux/commit/ed404d9fd36b826f43e85a7c7cc77b3d966cf83d",
+      "original_message": "i2c: qcom-cci: skip core clock rates the clock cannot provide\n\ncci_get_required_rate() picks the lowest rate that has timings for every\nactive master, but never checks that the CCI clock can run at it. On\nglymur, sm8750 and kaanapali the CCI clock table has no 19.2 MHz entry,\nso the request rounds up to 30 MHz or 37.5 MHz, the timing lookup for\nthe running rate fails and the controller does not probe:\n\n  i2c-qcom-cci ac16000.cci: CCI clock is not at expected 19200000 Hz\n  i2c-qcom-cci ac16000.cci: no timing for mode 1 at CCI clock 30000000 Hz\n  i2c-qcom-cci ac16000.cci: probe with driver i2c-qcom-cci failed with error -95\n\nOnly consider rates clk_round_rate() can deliver exactly. Glymur then\nruns its CCI at 37.5 MHz, which has timings for every mode.\n\nFixes: fa1eb3af12fa (\"i2c: qcom-cci: Enforce the required CCI clock rate\")\nSigned-off-by: Oleg Keri <okerixx@gmail.com>\nReviewed-by: Loic Poulain <loic.poulain@oss.qualcomm.com>\nSigned-off-by: Andi Shyti <andi.shyti@kernel.org>\nLink: https://patch.msgid.link/20261008230725.3228-1-okerixx@gmail.com"
+    }
+  ],
+  "patch_file": "0021-cci-clock-and-stretch.patch",
+  "patch_sha256": "5a5d922f93f275c50697f9984742637523dc84d6ecbe4d38d8220db439174398",
+  "base_files": {
+    "drivers/i2c/busses/i2c-qcom-cci.c": "880915dfacd79eb78b70fa06defa3e12c8ff0c64cd73784150ba51c0a950608d",
+    "drivers/i2c/busses/Kconfig": "e4d30e59a8fe1ec4616182ad075f316824ff5edc9169e90505dfe42668252cdc"
+  },
+  "generated_files": {
+    "drivers/i2c/busses/i2c-qcom-cci.c": "6869bcf5d23aaba061cad45ad779d5825f8b00259c6b4d5e205843603ba6e919",
+    "drivers/i2c/busses/Kconfig": "28dea180513bff2b6a2469eaef8908555fa429ea66ccf8c9d65bb885e8abb1ce"
+  },
+  "hardware_qualified": false,
+  "phone_cci_clock_supported_rates_hz": [
+    37500000
+  ],
+  "original_pad_has_no_s5kjn5_integration": true,
+  "generated_source_newlines": "LF: reconstructed with Linux git apply and verified against exact pinned base hashes"
+}

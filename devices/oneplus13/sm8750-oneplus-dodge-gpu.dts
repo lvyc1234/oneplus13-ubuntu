@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: BSD-3-Clause
+/* Isolated Adreno830 render candidate. No display, touch or radio.
+ * Firmware must be independently matched to this phone before a future test.
+ * No signed firmware or owner data is embedded in this tree.
+ */
+#include "sm8750-oneplus-dodge.dts"
+
+/ { model = "OnePlus 13 (Adreno830 render-only experimental candidate)"; };
+
+&gpu { status = "okay"; };
+
+&gpu_zap_shader {
+	firmware-name = "qcom/sm8750/oneplus/dodge/gen80000_zap.mbn";
+};

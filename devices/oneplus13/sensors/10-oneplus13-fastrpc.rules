@@ -1,0 +1,1 @@
+ACTION!="remove", SUBSYSTEM=="misc", KERNEL=="fastrpc-adsp-secure", OWNER="65534", GROUP="65534", MODE="0600", ENV{IIO_SENSOR_PROXY_TYPE}="ssc-accel ssc-compass ssc-gyro", ENV{ACCEL_MOUNT_MATRIX}="1, 0, 0; 0, -1, 0; 0, 0, 1"

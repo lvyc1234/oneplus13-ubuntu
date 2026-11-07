@@ -1,0 +1,56 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+set -eu
+mounted_read_only() {
+    device_id=$(cat "/sys/class/block/$1/dev" 2>/dev/null) || return 1
+    [ -n "$device_id" ] || return 1
+    awk -v device="$device_id" '
+        $3 == device {
+            found = 1
+            count = split($6, options, ",")
+            readonly = 0
+            for (i = 1; i <= count; i++)
+                if (options[i] == "ro") readonly = 1
+            if (!readonly) writable = 1
+        }
+        END { exit !(found && !writable) }
+    ' /proc/self/mountinfo
+}
+protect() {
+    for disk in /sys/class/block/*; do
+        [ -e "$disk" ] || continue
+        name=${disk##*/}
+        case "$name" in loop*|ram*|zram*) continue ;; esac
+        [ -b "/dev/$name" ] || continue
+        attempt=1
+        while [ "$attempt" -le 3 ]; do
+            value=$(blockdev --getro "/dev/$name" 2>/dev/null) || value=
+            [ "$value" = 1 ] && break
+            blockdev --setro "/dev/$name" 2>/dev/null || true
+            value=$(blockdev --getro "/dev/$name" 2>/dev/null) || value=
+            [ "$value" = 1 ] && break
+            attempt=$((attempt + 1))
+            [ "$attempt" -le 3 ] && sleep 0.05
+        done
+        if [ "$value" != 1 ]; then
+            # A removed block node has no remaining target to protect.
+            if [ ! -e "$disk" ] && [ ! -e "/dev/$name" ]; then continue; fi
+            if timeout -k 1 4 /usr/bin/python3 /usr/libexec/oneplus13-readonly-block.py "/dev/$name" \
+                > /dev/null \
+                2>> /run/oneplus13/readonly-block-errors.log; then
+                continue
+            fi
+            if [ ! -e "$disk" ] && [ ! -e "/dev/$name" ]; then continue; fi
+            mounted_read_only "$name" || return 1
+        fi
+    done
+}
+if [ "${1:-}" = --once ]; then protect; exit; fi
+while :; do
+    if ! protect; then
+        echo 'ONEPLUS13_STORAGE_GUARD_FAILED' > /dev/kmsg
+        /usr/bin/busybox reboot -f -n
+        exit 1
+    fi
+    sleep 1
+done

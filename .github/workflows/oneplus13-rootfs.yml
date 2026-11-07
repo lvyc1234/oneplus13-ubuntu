@@ -1,0 +1,48 @@
+name: OnePlus 13 Ubuntu GNOME rootfs
+
+on:
+  push:
+    branches: [oneplus13-bringup]
+    paths:
+      - .github/workflows/oneplus13-rootfs.yml
+      - devices/oneplus13/ubuntu.json
+      - tools/oneplus13/rootfs.sh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oneplus13-rootfs-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  rootfs:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install archive tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y squashfs-tools zstd
+      - name: Build pinned Ubuntu GNOME userspace natively on ARM64
+        run: sudo bash tools/oneplus13/rootfs.sh
+      - name: Check automatic WiFi failure gates without hardware
+        run: python3 -m unittest discover -s tests -p test_oneplus13_automatic_wifi.py -v
+      - name: Check RAM clock and ordinary desktop session gates without hardware
+        run: |
+          python3 -m unittest discover -s tests -p test_oneplus13_ram_clock.py -v
+          python3 -m unittest discover -s tests -p test_oneplus13_ram_desktop.py -v
+      - name: Verify complete desktop runtime and activation files
+        run: sudo python3 tools/oneplus13/verify-rootfs.py out/oneplus13-rootfs-artifacts --report out/oneplus13-rootfs-artifacts/download-verification.json
+      - name: Upload rootfs and package provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: oneplus13-ubuntu-26.04.1-gnome-${{ github.sha }}
+          path: out/oneplus13-rootfs-artifacts/
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error

@@ -1,0 +1,101 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH 11/11] drm/msm/dpu: budget AA569 mixers and split pipes against real OPP
+
+Use the required two-mixer topology for the pixel floor. Split fetch pipes
+against the inverse burst/inefficiency budget before assigning resources.
+Do not divide aggregate bandwidth or raise the OPP ceiling.
+Author: Codex. Hardware acceptance remains pending.
+
+diff --git a/drivers/gpu/drm/msm/disp/dpu1/dpu_core_perf.c b/drivers/gpu/drm/msm/disp/dpu1/dpu_core_perf.c
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_core_perf.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_core_perf.c
+@@ -12,6 +12,7 @@
+ #include <linux/clk.h>
+ #include <linux/bitmap.h>
+ #include <linux/overflow.h>
++#include <linux/math64.h>
+ 
+ #include "dpu_kms.h"
+ #include "dpu_trace.h"
+@@ -184,6 +185,27 @@
+ 	return 0;
+ }
+ 
++u64 dpu_aa569_spr_max_pipe_rate(const struct dpu_core_perf *perf)
++{
++	u64 product, limit;
++	u32 factor;
++
++	if (!perf || !perf->perf_cfg || !perf->max_opp_clk_rate)
++		return 0;
++	factor = perf->perf_cfg->clk_inefficiency_factor;
++	if (!factor)
++		factor = 100;
++	/* Invert both ceiling-rounded factors. A pipe at or below this
++	 * floor is guaranteed to fit the real OPP after both ceil operations.
++	 */
++	if (check_mul_overflow(perf->max_opp_clk_rate, 102ULL, &product))
++		return 0;
++	limit = div64_u64(product, 125);
++	if (check_mul_overflow(limit, 100ULL, &product))
++		return 0;
++	return div64_u64(product, factor);
++}
++
+ static int dpu_aa569_spr_calc(struct drm_crtc_state *state,
+ 			    const struct dpu_perf_cfg *cfg,
+ 			    struct dpu_core_perf_params *perf)
+@@ -194,9 +216,17 @@
+ 	struct drm_plane_state *pstate;
+ 	u64 bw, clock, product;
+ 	u32 remainder;
++	unsigned int num_lm = dpu_crtc_get_num_lm(state);
+ 	int ret;
+ 
+-	next.core_clk_rate = (u64)mode->vtotal * mode->hdisplay * drm_mode_vrefresh(mode);
++	/* The opt-in reservation requires 2 LM + 2 DSPP + 2 DSC, not a
++	 * single full-width mixer. Fetch clocks are checked per actual pipe
++	 * below; aggregate fetch bandwidth must never be divided by num_lm.
++	 */
++	if (num_lm != 2 || mode->hdisplay <= 0 || mode->hdisplay % num_lm)
++		return -EINVAL;
++	next.core_clk_rate = (u64)mode->vtotal * (mode->hdisplay / num_lm) *
++			     drm_mode_vrefresh(mode);
+ 	drm_atomic_crtc_state_for_each_plane_state(plane, pstate, state) {
+ 		if (!pstate->visible)
+ 			continue;
+diff --git a/drivers/gpu/drm/msm/disp/dpu1/dpu_core_perf.h b/drivers/gpu/drm/msm/disp/dpu1/dpu_core_perf.h
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_core_perf.h
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_core_perf.h
+@@ -75,6 +75,8 @@
+ 
+ struct dpu_kms;
+ 
++u64 dpu_aa569_spr_max_pipe_rate(const struct dpu_core_perf *perf);
++
+ int dpu_core_perf_debugfs_init(struct dpu_kms *dpu_kms, struct dentry *parent);
+ 
+ #endif /* _DPU_CORE_PERF_H_ */
+diff --git a/drivers/gpu/drm/msm/disp/dpu1/dpu_plane.c b/drivers/gpu/drm/msm/disp/dpu1/dpu_plane.c
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_plane.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_plane.c
+@@ -923,6 +923,19 @@
+ 
+ 	/* In non-virtual plane case, one mixer pair is always needed. */
+ 	num_lm = dpu_crtc_get_num_lm(crtc_state);
++	if (kms->aa569_spr) {
++		if (num_lm != 2)
++			return -EINVAL;
++		/* Split before assignment using the same burst/inefficiency
++		 * budget as the final CRTC check, bounded by the actual OPP.
++		 * Comparing raw fetch rate to max_core_clk_rate can otherwise
++		 * leave a full-width pipe that the later budget must reject.
++		 */
++		max_mdp_clk_rate = min(max_mdp_clk_rate,
++				dpu_aa569_spr_max_pipe_rate(&kms->perf));
++		if (!max_mdp_clk_rate)
++			return -EINVAL;
++	}
+ 	if (dpu_use_virtual_planes)
+ 		num_stages = (num_lm + 1) / 2;
+ 	else

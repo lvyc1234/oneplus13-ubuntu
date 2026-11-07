@@ -1,0 +1,22 @@
+{
+  "scope": "PUBLIC_UPSTREAM_API_REVIEW_NOT_HARDWARE_EVIDENCE",
+  "sources": [
+    {
+      "url": "https://raw.githubusercontent.com/GStreamer/gstreamer/1.28.2/subprojects/gst-plugins-good/sys/v4l2/gstv4l2.c",
+      "sha256": "221649ba48ca22c9708cdc353949d9e2d6cc400c37cb25402049d66df041219d",
+      "bytes": 7143
+    },
+    {
+      "url": "https://raw.githubusercontent.com/GStreamer/gstreamer/1.28.2/subprojects/gst-plugins-good/sys/v4l2/gstv4l2videodec.c",
+      "sha256": "15d042990e14de58f42fb409c18247835138bc5adc2cf5563c7fb90326c1992e",
+      "bytes": 49780
+    },
+    {
+      "url": "https://raw.githubusercontent.com/GStreamer/gstreamer/1.28.2/subprojects/gst-plugins-good/sys/v4l2/gstv4l2object.c",
+      "sha256": "1d9a43cbe1821c747c6768451e06dd2e152b695d510a12e1cc718af3a9ca947d",
+      "bytes": 209393
+    }
+  ],
+  "gstreamer_release": "1.28.2",
+  "no_software_decoder_or_autoplug": true
+}

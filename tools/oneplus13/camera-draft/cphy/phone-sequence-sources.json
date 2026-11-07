@@ -1,0 +1,44 @@
+{
+  "scope": "PUBLIC_SOURCE_REVIEW_NO_PHONE_OPERATIONS",
+  "sources": [
+    {
+      "path": "vendor/qcom/opensource/camera-kernel/drivers/cam_sensor_module/cam_csiphy/cam_csiphy_core.c",
+      "pin": "d50b305f7da9e14715a25120a4ac7b1a4b8b97c3",
+      "git_blob": "50c3bc15a1a8c73535009c93464f538fbd79d3c2",
+      "sha256": "df29245c5435b8401cffb3abba589bdf92eb6b2070386b41d8754bb01a735e99",
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8750/d50b305f7da9e14715a25120a4ac7b1a4b8b97c3/vendor/qcom/opensource/camera-kernel/drivers/cam_sensor_module/cam_csiphy/cam_csiphy_core.c"
+    },
+    {
+      "path": "vendor/qcom/opensource/camera-kernel/drivers/cam_sensor_module/cam_csiphy/cam_csiphy_soc.c",
+      "pin": "d50b305f7da9e14715a25120a4ac7b1a4b8b97c3",
+      "git_blob": "d99d0898fb0432f0938fc5e65b5b00daf424e212",
+      "sha256": "18849b20fc1926ea218f16f833c374e7b5c9884875c9f50e072290fdefdb126f",
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8750/d50b305f7da9e14715a25120a4ac7b1a4b8b97c3/vendor/qcom/opensource/camera-kernel/drivers/cam_sensor_module/cam_csiphy/cam_csiphy_soc.c"
+    },
+    {
+      "path": "vendor/qcom/opensource/camera-kernel/drivers/cam_sensor_module/cam_csiphy/cam_csiphy_dev.h",
+      "pin": "d50b305f7da9e14715a25120a4ac7b1a4b8b97c3",
+      "git_blob": "cf7eaec4587a1c81ef200fcd9e0f4dff5218da41",
+      "sha256": "c36a5fffa09407ca50ec0bc2eb27dd97d92c517614428dbd0049f782c3ea2309",
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8750/d50b305f7da9e14715a25120a4ac7b1a4b8b97c3/vendor/qcom/opensource/camera-kernel/drivers/cam_sensor_module/cam_csiphy/cam_csiphy_dev.h"
+    }
+  ],
+  "source_functions": [
+    "cam_csiphy_get_settle_count",
+    "cam_csiphy_get_lane_enable",
+    "cam_csiphy_update_lane_selection",
+    "cam_csiphy_cphy_data_rate_config",
+    "oplus_cam_csiphy_cphy_data_rate_config",
+    "cam_csiphy_config_dev",
+    "oplus_cam_csiphy_config_dev",
+    "cam_csiphy_cphy_irq_config",
+    "cam_csiphy_release_from_reset_state"
+  ],
+  "conditions": [
+    "nonsecure standalone three-trio C-PHY",
+    "normal CDR defaults; no sweep, auxiliary or diagnostic override",
+    "400MHz timer with explicit sensor prepare/preamble; no guessed defaults",
+    "power, clocks, reset assertion and CPAS prerequisite not implemented"
+  ],
+  "runtime_mmio_adapter_present": false
+}

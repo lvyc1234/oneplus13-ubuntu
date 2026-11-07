@@ -1,0 +1,243 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH] phone-rpc: preserve volatile namespace failure semantics
+
+Offline regressions reproduce snapshot resurrection after rename and namespace
+exhaustion from missing-source renames. Keep bounded tombstones so removed names
+cannot silently reappear from the immutable snapshot. Reserve a tombstone slot
+before committing rename, retain source handles, and refuse table exhaustion or
+busy destinations without changing prior bytes or names.
+
+Allocate the index when append creates a missing file; previously that path used
+an uninitialized index. Normalize VFS negative errno, check handle availability
+before seeding, roll back a failed new seed, and use the signed IDL seek offset.
+The RAM namespace and byte/handle caps remain unchanged. No host writes are added.
+
+Tests exercise the actual wire dispatcher, seeded rename/read/restore, missing
+append creation, signed seek, missing-name floods, ENOMEM and full-table refusal.
+This is offline userspace correctness evidence, not sensor-stream qualification.
+
+--- a/hexagonrpcd/apps_std.c
++++ b/hexagonrpcd/apps_std.c
+@@ -52,6 +52,9 @@
+ {
+ 	if (ret == 0)
+ 		return AEE_SUCCESS;
++	/* VFS operations use negative errno; the RAM store uses positive errno. */
++	if (ret < 0)
++		ret = -ret;
+ 	switch (ret) {
+ 	case EBADF: return AEE_EBADHANDLE;
+ 	case EACCES: return AEE_EREADONLY;
+@@ -102,6 +105,9 @@
+ 		*index = (unsigned int) ret;
+ 		return 0;
+ 	}
++	ret = pr_named_slot(&ctx->ramfs, name);
++	if (ret >= 0 && ctx->ramfs.files[ret].tombstone)
++		return -ENOENT;
+ 	fd = hexagonfs_openat(ctx->fds, ctx->rootfd, dirfd, name);
+ 	if (fd < 0)
+ 		return fd;
+@@ -290,7 +296,7 @@
+ 	struct apps_std_ctx *ctx = data;
+ 	const struct {
+ 		uint32_t fd;
+-		uint32_t pos;
++		int32_t pos;
+ 		uint32_t whence;
+ 	} *first_in = inbufs[0].p;
+ 	uint32_t whence;
+@@ -298,8 +304,7 @@
+ 
+ 	(void) outbufs;
+ 	if (inbufs[0].p == NULL || inbufs[0].s != sizeof(*first_in)
+-	 || first_in->whence >= HRPC_ARRAY_SIZE(apps_std_whence_table)
+-	 || first_in->pos > INT32_MAX)
++	 || first_in->whence >= HRPC_ARRAY_SIZE(apps_std_whence_table))
+ 		return AEE_EBADPARM;
+ 	if (pr_namespace(first_in->fd))
+ 		return apps_std_ram_error(pr_seek(&ctx->ramfs, first_in->fd,
+@@ -366,9 +371,13 @@
+ 		 || strcmp(inbufs[2].p, ";")
+ 		 || apps_std_ram_mode(inbufs[4].p, &mode))
+ 			return AEE_EUNSUPPORTED;
++		if (!pr_handle_available(&ctx->ramfs))
++			return AEE_EOUTOFHANDLES;
+ 		if (mode != 'w') {
+ 			ret = apps_std_seed_ram(ctx, inbufs[3].p, dirfd, &index);
+-			if (ret && !(mode == 'a' && ret == -ENOENT))
++			if (mode == 'a' && ret == -ENOENT)
++				ret = pr_slot(&ctx->ramfs, inbufs[3].p, &index);
++			if (ret)
+ 				return apps_std_ram_error(ret);
+ 		} else {
+ 			ret = pr_slot(&ctx->ramfs, inbufs[3].p, &index);
+--- a/hexagonrpcd/phone_ramfs.h
++++ b/hexagonrpcd/phone_ramfs.h
+@@ -15,7 +15,7 @@
+ #define PR_HANDLES 64u
+ #define PR_GEN_MAX 0x3fffffu
+ _Static_assert(PR_HANDLES <= 256, "handle slot must fit in one byte");
+-struct pr_file { char name[PR_NAME_MAX]; unsigned char *data; size_t size, capacity; bool present; };
++struct pr_file { char name[PR_NAME_MAX]; unsigned char *data; size_t size, capacity; bool present, tombstone; };
+ struct pr_handle { uint32_t generation; size_t pos; unsigned int file; char mode; bool active; };
+ struct phone_ramfs {
+     bool enabled;
+@@ -72,6 +72,24 @@
+         if(fs->files[i].present && !strcmp(fs->files[i].name,canonical)) return (int)i;
+     return -ENOENT;
+ }
++/* Includes deleted names: a rename must mask the immutable source snapshot. */
++static inline int pr_named_slot(struct phone_ramfs *fs,const char *name)
++{
++    char canonical[PR_NAME_MAX];
++    unsigned int i;
++    int ret=pr_canonical_name(name,canonical);
++    if(ret) return -ret;
++    for(i=0;i<PR_FILES;i++)
++        if(!strcmp(fs->files[i].name,canonical)) return (int)i;
++    return -ENOENT;
++}
++static inline bool pr_handle_available(struct phone_ramfs *fs)
++{
++    unsigned int i;
++    for(i=0;i<PR_HANDLES;i++)
++        if(!fs->handles[i].active && fs->handles[i].generation<PR_GEN_MAX) return true;
++    return false;
++}
+ static inline bool pr_namespace(uint32_t handle) { return (handle & 0xc0000000u)==0x40000000u; }
+ static inline struct pr_handle *pr_get(struct phone_ramfs *fs,uint32_t handle)
+ {
+@@ -117,11 +135,17 @@
+ static inline int pr_seed(struct phone_ramfs *fs,const char *name,const void *data,size_t size)
+ {
+     unsigned int index;
+-    int ret;
++    int ret,previous;
+     if(!fs->enabled || (size && !data)) return EINVAL;
++    previous=pr_named_slot(fs,name);
+     ret=pr_slot(fs,name,&index);if(ret) return ret;
+     if(fs->files[index].present) return EEXIST;
+-    ret=pr_reserve(fs,&fs->files[index],size);if(ret) return ret;
++    if(fs->files[index].tombstone) return ENOENT;
++    ret=pr_reserve(fs,&fs->files[index],size);
++    if(ret) {
++        if(previous<0) pr_reset_file(fs,&fs->files[index]);
++        return ret;
++    }
+     if(size) memcpy(fs->files[index].data,data,size);
+     fs->files[index].size=size;fs->files[index].present=true;return 0;
+ }
+@@ -138,7 +162,7 @@
+     if(mode=='r' && !f->present) return ENOENT;
+     h=&fs->handles[i];h->generation++;h->active=true;h->file=index;h->mode=mode;
+     if(mode=='w') f->size=0;
+-    f->present=true;h->pos=mode=='a'?f->size:0;
++    f->present=true;f->tombstone=false;h->pos=mode=='a'?f->size:0;
+     *result=0x40000000u|(h->generation<<8)|i;return 0;
+ }
+ static inline int pr_close(struct phone_ramfs *fs,uint32_t handle)
+@@ -200,20 +224,27 @@
+ static inline int pr_rename(struct phone_ramfs *fs,const char *old_name,const char *new_name)
+ {
+     char old_path[PR_NAME_MAX],new_path[PR_NAME_MAX];
+-    unsigned int source,target;
++    unsigned int source,target,i;
+     int ret;
+     if(!fs->enabled) return EINVAL;
+     ret=pr_canonical_name(old_name,old_path);if(ret) return ret;
+     ret=pr_canonical_name(new_name,new_path);if(ret) return ret;
+     if(!strcmp(old_path,new_path)) return pr_find(fs,old_path)>=0?0:ENOENT;
+-    ret=pr_slot(fs,old_path,&source);if(ret) return ret;
+-    if(!fs->files[source].present) return ENOENT;
+-    ret=pr_find(fs,new_path);
++    ret=pr_find(fs,old_path);if(ret<0) return -ret;
++    source=(unsigned int)ret;
++    ret=pr_named_slot(fs,new_path);
+     if(ret>=0) {
+         target=(unsigned int)ret;
+         if(pr_file_has_handles(fs,target)) return EBUSY;
+-        pr_reset_file(fs,&fs->files[target]);
++    } else {
++        for(i=0;i<PR_FILES;i++) if(fs->files[i].name[0]=='\0') break;
++        if(i==PR_FILES) return EMFILE;
++        target=i;
+     }
++    /* All refusal conditions precede this commit point. Keep source handles. */
++    pr_reset_file(fs,&fs->files[target]);
++    strcpy(fs->files[target].name,old_path);
++    fs->files[target].tombstone=true;
+     strcpy(fs->files[source].name,new_path);return 0;
+ }
+ static inline void pr_destroy(struct phone_ramfs *fs)
+--- a/tests/test_phone_ramfs.c
++++ b/tests/test_phone_ramfs.c
+@@ -4,6 +4,32 @@
+ #include "../hexagonrpcd/phone_ramfs.h"
+ #define CHECK(x) do { if(!(x)) { fprintf(stderr,"ramfs:%d: %s\n",__LINE__,#x);exit(1); } } while(0)
+ static void *deny_resize(void *old,size_t size) { (void)old;(void)size;return NULL; }
++static void namespace_failures(void)
++{
++    struct phone_ramfs fs={.enabled=true};
++    char old_name[PR_NAME_MAX];
++    unsigned int i;
++    /* Rejected lookups must not exhaust the finite name table. */
++    for(i=0;i<PR_FILES+1;i++) {
++        snprintf(old_name,sizeof(old_name),"missing-%u",i);
++        CHECK(pr_rename(&fs,old_name,"target")==ENOENT);
++    }
++    for(i=0;i<PR_FILES;i++) CHECK(fs.files[i].name[0]=='\0');
++    fs.resize=deny_resize;
++    CHECK(pr_seed(&fs,pr_names[0],"x",1)==ENOMEM);
++    for(i=0;i<PR_FILES;i++) CHECK(fs.files[i].name[0]=='\0');
++    CHECK(fs.total_capacity==0);
++    fs.resize=NULL;
++    CHECK(pr_seed(&fs,pr_names[0],"x",1)==0);
++    for(i=1;i<PR_FILES;i++) {
++        unsigned int index;
++        snprintf(old_name,sizeof(old_name),"reserved-%u",i);
++        CHECK(pr_slot(&fs,old_name,&index)==0);
++    }
++    CHECK(pr_rename(&fs,pr_names[0],"no-space")==EMFILE);
++    CHECK(pr_find(&fs,pr_names[0])==0 && fs.files[0].size==1 && fs.files[0].data[0]=='x');
++    pr_destroy(&fs);
++}
+ int main(void)
+ {
+     struct phone_ramfs fs={0};
+@@ -85,5 +111,6 @@
+     pr_destroy(&fs);CHECK(!fs.enabled && !fs.files[0].data && !fs.files[1].data);
+     CHECK(pr_get(&fs,stale)==NULL);
+     free(large);
++    namespace_failures();
+     puts("RAMFS_DEFAULT_OFF_EXACT_NAMES_CURSORS_CAPS_ENOMEM_STALE_GENERATION_CLEANUP_PASS");return 0;
+ }
+--- a/tests/test_apps_std_ram.c
++++ b/tests/test_apps_std_ram.c
+@@ -232,6 +232,26 @@
+         fail("seeded readback");
+     }
+     if(simple_word(FCLOSE_SC,fd,0,1,&dispatch_ret) || dispatch_ret) fail("close read handle");
++
++    /* Renaming a seeded snapshot must hide the original pathname in RAM. */
++    if(rename_ram(path0,"/mnt/vendor/persist/sensors/registry/moved-snapshot",
++                  &dispatch_ret) || dispatch_ret) fail("rename seeded snapshot");
++    if(open_ram(path0,"r","ADSP_LIBRARY_PATH",";",strlen(path0)+1,&fd,&dispatch_ret)
++       !=AEE_ENOSUCH || dispatch_ret) fail("renamed snapshot was resurrected");
++    if(rename_ram("/mnt/vendor/persist/sensors/registry/moved-snapshot",path0,
++                  &dispatch_ret) || dispatch_ret) fail("restore seeded snapshot");
++    if(open_ram(path0,"r","ADSP_LIBRARY_PATH",";",strlen(path0)+1,&fd,&dispatch_ret)
++       || dispatch_ret || fseek_word(fd,(uint32_t)-1,2,&dispatch_ret) || dispatch_ret ||
++       read_ram(fd,1,buf,&read,&eof,&dispatch_ret) || dispatch_ret || read!=1 ||
++       buf[0]!='a') fail("signed seek from end");
++    if(fseek_word(fd,(uint32_t)INT32_MIN,1,&dispatch_ret)!=AEE_EBADPARM || dispatch_ret)
++        fail("negative seek before start");
++    if(simple_word(FCLOSE_SC,fd,0,1,&dispatch_ret) || dispatch_ret) fail("close signed seek");
++
++    if(open_ram(path3,"ab","ADSP_LIBRARY_PATH",";",strlen(path3)+1,&fd,&dispatch_ret)
++       || dispatch_ret || write_ram(fd,"new",3,&written,&eof,&dispatch_ret) ||
++       dispatch_ret || written!=3) fail("append must create a missing RAM file");
++    if(simple_word(FCLOSE_SC,fd,0,1,&dispatch_ret) || dispatch_ret) fail("close new append");
+ 
+     if(open_ram(path1,"w","ADSP_LIBRARY_PATH",";",strlen(path1)+1,&other,&dispatch_ret)
+        || dispatch_ret) fail("open writable RAM file");

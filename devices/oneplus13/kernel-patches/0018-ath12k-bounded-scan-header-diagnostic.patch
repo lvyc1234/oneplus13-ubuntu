@@ -1,0 +1,24 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH] wifi: ath12k: include serialized priority in bounded range trace
+
+Use the existing shared 32-row range trace budget. Only two numeric header
+fields are retained; no payload, identifier or network data is logged. This
+allows the real-device round to check the command field after serialization,
+without assuming the host-only header block test proves firmware scheduling.
+
+---
+diff --git a/drivers/net/wireless/ath/ath12k/wmi.c b/drivers/net/wireless/ath/ath12k/wmi.c
+--- a/drivers/net/wireless/ath/ath12k/wmi.c
++++ b/drivers/net/wireless/ath/ath12k/wmi.c
+@@ -2688,6 +2688,11 @@
+ 
+ 	ath12k_wmi_copy_scan_event_cntrl_flags(cmd, arg);
+ 
++	if (ar->scan.range_req &&
++	    atomic_inc_return(&ar->scan.range_trace_count) <= 32)
++		ath12k_info(ar->ab, "phone range header priority=%u state11d=%u\n",
++			    le32_to_cpu(cmd->scan_priority), ar->state_11d);
++
+ 	cmd->dwell_time_active = cpu_to_le32(arg->dwell_time_active);
+ 	cmd->dwell_time_active_2g = cpu_to_le32(arg->dwell_time_active_2g);
+ 	cmd->dwell_time_passive = cpu_to_le32(arg->dwell_time_passive);

@@ -1,0 +1,57 @@
+{
+  "device": "oneplus,dodge",
+  "model": "OnePlus 13",
+  "soc": "qcom,sm8750",
+  "status": "OFFLINE_CANDIDATE_NOT_DEVICE_TESTED",
+  "kernel": {
+    "repository": "https://github.com/yzddmr6/linux-sm8750-erhai.git",
+    "commit": "7a81d184e3098624d4342d8f4eff5e23674bcc9f",
+    "baseline": "v7.2",
+    "board_dts": "sm8750-oneplus-dodge.dts",
+    "configuration": "oneplus13.config"
+  },
+  "board_reference": {
+    "repository": "https://github.com/sm8750-mainline/linux.git",
+    "commit": "1f2047e8663eda76c8b172fd3e040e3b3fa17950",
+    "path": "arch/arm64/boot/dts/qcom/sm8750-oneplus-dodge.dts",
+    "author": "index986",
+    "license": "BSD-3-Clause",
+    "scope": "Community 16 GB / 512 GB reference, not evidence from the user's phone"
+  },
+  "integration_reference": "88fd48f85dee54c482a98e55319b11d1739e8852",
+  "stock_reference": {
+    "repository": "https://github.com/OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8750",
+    "branch": "oneplus/sm8750_b_16.0.0_oneplus_13",
+    "commit": "d50b305f7da9e14715a25120a4ac7b1a4b8b97c3",
+    "scope": "Research only; not a substitute for this phone's running FDT and stock images"
+  },
+  "busybox_source": {
+    "version": "1:1.36.1-6ubuntu3.1",
+    "files": [
+      {
+        "file": "busybox_1.36.1-6ubuntu3.1.dsc",
+        "url": "https://ports.ubuntu.com/pool/main/b/busybox/busybox_1.36.1-6ubuntu3.1.dsc",
+        "sha256": "ffbee3f0383ea5a3e77033c2bcc1978dc9ae00ff8c9d0a362ee32f6e84254be8",
+        "bytes": 2711
+      },
+      {
+        "file": "busybox_1.36.1.orig.tar.bz2",
+        "url": "https://ports.ubuntu.com/pool/main/b/busybox/busybox_1.36.1.orig.tar.bz2",
+        "sha256": "b8cc24c9574d809e7279c3be349795c5d5ceb6fdf19ca709f80cde50e47de314",
+        "bytes": 2525473
+      },
+      {
+        "file": "busybox_1.36.1.orig.tar.bz2.asc",
+        "url": "https://ports.ubuntu.com/pool/main/b/busybox/busybox_1.36.1.orig.tar.bz2.asc",
+        "sha256": "d4a7082ba3cbc35b2fdb4f132a32e3789de66ce468b7b4858563f5f157c28afe",
+        "bytes": 195
+      },
+      {
+        "file": "busybox_1.36.1-6ubuntu3.1.debian.tar.xz",
+        "url": "https://ports.ubuntu.com/pool/main/b/busybox/busybox_1.36.1-6ubuntu3.1.debian.tar.xz",
+        "sha256": "1c7d785cf1e1d5d09ddc22fe755e14327fb3799878a5d840fc611044ff05f022",
+        "bytes": 84488
+      }
+    ]
+  }
+}

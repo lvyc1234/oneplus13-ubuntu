@@ -1,0 +1,7 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+set -eu
+while [ -c /dev/ttyGS0 ]; do
+    /usr/bin/busybox setsid /usr/bin/busybox cttyhack /bin/sh < /dev/ttyGS0 > /dev/ttyGS0 2>&1 || true
+    sleep 1
+done

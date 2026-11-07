@@ -1,0 +1,18 @@
+Subject: [PHONE OFFLINE FIX] media: camss: remove obsolete local after PHY split
+
+Prepared by Codex <codex@openai.com>.
+The pinned external-PHY series removes all uses of remote from this loop.
+Native W=1 KCFLAGS=-Werror compilation rejects the leftover declaration.
+Remove only that unused declaration; keep the original23 patches intact.
+
+diff --git a/drivers/media/platform/qcom/camss/camss.c b/drivers/media/platform/qcom/camss/camss.c
+--- a/drivers/media/platform/qcom/camss/camss.c
++++ b/drivers/media/platform/qcom/camss/camss.c
+@@ -5140,7 +5140,6 @@ static int camss_parse_ports(struct camss *camss)
+ 
+ 	fwnode_graph_for_each_endpoint(fwnode, ep) {
+ 		struct camss_async_subdev *csd;
+-		struct fwnode_handle *remote;
+ 
+ 		if (!fwnode_device_is_available(ep))
+ 			continue;

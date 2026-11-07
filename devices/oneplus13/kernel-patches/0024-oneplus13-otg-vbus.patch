@@ -1,0 +1,280 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH] power: qcom-battmgr: add manual bounded phone VBUS lease
+
+Reproduce the reference arm17/18 then current64 and VBUS24 path only after
+explicit sysfs requests. Save and read back the observed baselines, keep UCSI
+data-role ownership and stop writes after transport ambiguity. Restore is
+best effort and can remain UNKNOWN; Android return does not prove firmware
+restoration.
+
+---
+
+diff --git a/drivers/power/supply/qcom_battmgr.c b/drivers/power/supply/qcom_battmgr.c
+index bf1cead..555f4ad 100644
+--- a/drivers/power/supply/qcom_battmgr.c
++++ b/drivers/power/supply/qcom_battmgr.c
+@@ -22,12 +22,19 @@
+ #include "oneplus13-otg-lease.h"
+ #include <linux/moduleparam.h>
+ #include "oneplus13-otg-supply-read.h"
++#include "oneplus13-otg-supply-lease.h"
+ 
+ /* Separate GET-only probe: never enables the supply or an old lease. */
+ static bool oneplus13_otg_supply_read;
+ module_param_named(oneplus13_otg_supply_read, oneplus13_otg_supply_read, bool, 0400);
+ MODULE_PARM_DESC(oneplus13_otg_supply_read, "Manual phone-only GET24/GET64; no supply setters");
+ 
++/* Manual one-shot VBUS experiment; never starts without an explicit sysfs store. */
++static bool oneplus13_otg_supply_lease;
++module_param_named(oneplus13_otg_supply_lease, oneplus13_otg_supply_lease, bool, 0400);
++MODULE_PARM_DESC(oneplus13_otg_supply_lease,
++		 "Manual phone-only 64-then-24 supply lease with bounded best-effort restore");
++
+ #define BATTMGR_CHEMISTRY_LEN	4
+ #define BATTMGR_STRING_LEN	128
+ 
+@@ -355,8 +362,11 @@ struct qcom_battmgr {
+ 	unsigned int op13_otg_property;
+ 	unsigned int op13_otg_value;
+ 	struct op13_otg_lease op13_otg_lease;
++	struct op13_otg_supply_lease op13_otg_supply_lease;
+ 	struct delayed_work op13_otg_restore_work;
++	struct delayed_work op13_otg_supply_restore_work;
+ 	u64 op13_otg_deadline;
++	u64 op13_otg_supply_deadline;
+ 	bool op13_otg_stopping;
+ 	bool op13_otg_awake;
+ 	struct wakeup_source *op13_otg_wakeup;
+@@ -1667,8 +1677,8 @@ static void qcom_battmgr_callback(const void *data, size_t len, void *priv)
+ 		matched = len == 24 ?
+ 			op13_otg_decode(data, 24, battmgr->op13_otg_opcode,
+ 					 battmgr->op13_otg_property, &value) : 0;
+-		if (!matched && oneplus13_otg_supply_read && op13_otg_machine())
+-			matched = op13_otg_supply_read_decode(data, len,
++		if (!matched && oneplus13_otg_supply_lease && op13_otg_machine())
++			matched = op13_otg_supply_decode(data, len,
+ 				battmgr->op13_otg_opcode, battmgr->op13_otg_property, &value);
+ 		if (matched) {
+ 			/* Only the first exact reply owns this completion. */
+@@ -1687,7 +1697,7 @@ static void qcom_battmgr_callback(const void *data, size_t len, void *priv)
+ 	    len >= 16 && (opcode == OP13_OTG_GET || opcode == OP13_OTG_SET) &&
+ 	    (op13_otg_le32((const unsigned char *)data + 12) == OP13_OTG_AP_ENABLE ||
+ 	     op13_otg_le32((const unsigned char *)data + 12) == OP13_OTG_SWITCH ||
+-	     (oneplus13_otg_supply_read &&
++	     ((oneplus13_otg_supply_read || oneplus13_otg_supply_lease) &&
+ 	      (op13_otg_le32((const unsigned char *)data + 12) == OP13_OTG_VBUS_ENABLE ||
+ 	       op13_otg_le32((const unsigned char *)data + 12) == OP13_OTG_BOOST_CURRENT))))
+ 		return;
+@@ -1755,12 +1765,175 @@ static struct device_attribute dev_attr_oneplus13_otg_vbus_enable =
+ static struct device_attribute dev_attr_oneplus13_otg_boost_current =
+ 	__ATTR(oneplus13_otg_boost_current, 0400, oneplus13_otg_boost_current_show, NULL);
+ 
++static int op13_otg_supply_transport_healthy(void *context)
++{
++	struct qcom_battmgr *battmgr = context;
++	unsigned long flags;
++	int healthy;
++
++	spin_lock_irqsave(&battmgr->op13_otg_lock, flags);
++	healthy = battmgr->service_up && !battmgr->op13_otg_poisoned;
++	spin_unlock_irqrestore(&battmgr->op13_otg_lock, flags);
++	return healthy;
++}
++
++static int op13_otg_supply_get(void *context, unsigned int property,
++			       unsigned int *value)
++{
++	return op13_otg_transfer(context, OP13_OTG_GET, property, value);
++}
++
++static int op13_otg_supply_set(void *context, unsigned int property,
++			      unsigned int value)
++{
++	return op13_otg_transfer(context, OP13_OTG_SET, property, &value);
++}
++
++static int op13_otg_supply_expired(void *context)
++{
++	struct qcom_battmgr *battmgr = context;
++
++	return battmgr->op13_otg_stopping ||
++		ktime_get_boottime_ns() >= battmgr->op13_otg_supply_deadline;
++}
++
++static struct op13_otg_supply_io op13_otg_supply_io(struct qcom_battmgr *battmgr)
++{
++	return (struct op13_otg_supply_io) {
++		.context = battmgr,
++		.get = op13_otg_supply_get,
++		.set = op13_otg_supply_set,
++		.transport_healthy = op13_otg_supply_transport_healthy,
++		.expired = op13_otg_supply_expired,
++	};
++}
++
++static void op13_otg_supply_restore_worker(struct work_struct *work)
++{
++	struct qcom_battmgr *battmgr = container_of(to_delayed_work(work),
++		struct qcom_battmgr, op13_otg_supply_restore_work);
++	struct op13_otg_supply_io io = op13_otg_supply_io(battmgr);
++
++	mutex_lock(&battmgr->lock);
++	if (battmgr->op13_otg_supply_lease.state == OP13_OTG_SUPPLY_ACTIVE ||
++	    battmgr->op13_otg_supply_lease.state == OP13_OTG_SUPPLY_ARMED)
++		op13_otg_supply_restore(&battmgr->op13_otg_supply_lease, &io);
++	mutex_unlock(&battmgr->lock);
++	if (battmgr->op13_otg_wakeup && battmgr->op13_otg_awake) {
++		__pm_relax(battmgr->op13_otg_wakeup);
++		battmgr->op13_otg_awake = false;
++	}
++}
++
++static void op13_otg_supply_remove(void *data)
++{
++	struct qcom_battmgr *battmgr = data;
++	struct op13_otg_supply_io io = op13_otg_supply_io(battmgr);
++
++	cancel_delayed_work_sync(&battmgr->op13_otg_supply_restore_work);
++	mutex_lock(&battmgr->lock);
++	if (battmgr->op13_otg_supply_lease.state == OP13_OTG_SUPPLY_ACTIVE ||
++	    battmgr->op13_otg_supply_lease.state == OP13_OTG_SUPPLY_ARMED)
++		op13_otg_supply_restore(&battmgr->op13_otg_supply_lease, &io);
++	mutex_unlock(&battmgr->lock);
++}
++
++static ssize_t oneplus13_otg_supply_lease_show(struct device *dev,
++		struct device_attribute *attr, char *buf)
++{
++	struct qcom_battmgr *battmgr = dev_get_drvdata(dev);
++	struct op13_otg_supply_lease lease;
++
++	mutex_lock(&battmgr->lock);
++	lease = battmgr->op13_otg_supply_lease;
++	mutex_unlock(&battmgr->lock);
++	return sysfs_emit(buf,
++		"state=%u used=%u saved_ap=%u saved_switch=%u saved_vbus=%u saved_current=%u dirty_ap=%u dirty_switch=%u dirty_vbus=%u dirty_current=%u\n",
++		lease.state, lease.used, lease.saved_ap, lease.saved_switch,
++		lease.saved_vbus, lease.saved_current, lease.dirty_ap,
++		lease.dirty_switch, lease.dirty_vbus, lease.dirty_current);
++}
++
++static ssize_t oneplus13_otg_supply_lease_store(struct device *dev,
++		struct device_attribute *attr, const char *buf, size_t count)
++{
++	struct qcom_battmgr *battmgr = dev_get_drvdata(dev);
++	struct op13_otg_supply_io io = op13_otg_supply_io(battmgr);
++	int ret;
++
++#ifdef MODULE
++	return -EOPNOTSUPP;
++#endif
++	if (!oneplus13_otg_supply_lease || !op13_otg_machine())
++		return -EOPNOTSUPP;
++	if (!sysfs_streq(buf, "arm") && !sysfs_streq(buf, "start") &&
++	    !sysfs_streq(buf, "restore"))
++		return -EINVAL;
++	if (sysfs_streq(buf, "arm")) {
++		if (atomic_cmpxchg(&op13_otg_boot_used, 0, 1))
++			return -EBUSY;
++		mutex_lock(&battmgr->lock);
++		battmgr->op13_otg_supply_deadline = ktime_get_boottime_ns() +
++			(u64)OP13_OTG_SUPPLY_WATCHDOG_SECONDS * NSEC_PER_SEC;
++		if (!schedule_delayed_work(&battmgr->op13_otg_supply_restore_work,
++					   OP13_OTG_SUPPLY_WATCHDOG_SECONDS * HZ)) {
++			ret = -EBUSY;
++			goto out;
++		}
++		if (battmgr->op13_otg_wakeup) {
++			__pm_stay_awake(battmgr->op13_otg_wakeup);
++			battmgr->op13_otg_awake = true;
++		}
++		ret = op13_otg_supply_arm(&battmgr->op13_otg_supply_lease, &io);
++		if (ret) {
++			cancel_delayed_work(&battmgr->op13_otg_supply_restore_work);
++			if (battmgr->op13_otg_wakeup && battmgr->op13_otg_awake) {
++				__pm_relax(battmgr->op13_otg_wakeup);
++				battmgr->op13_otg_awake = false;
++			}
++		}
++	} else if (sysfs_streq(buf, "start")) {
++		mutex_lock(&battmgr->lock);
++		if (battmgr->op13_otg_supply_lease.state != OP13_OTG_SUPPLY_ARMED ||
++		    op13_otg_supply_expired(battmgr)) {
++			ret = -EINVAL;
++			goto out;
++		}
++		battmgr->op13_otg_supply_deadline = ktime_get_boottime_ns() +
++			(u64)OP13_OTG_SUPPLY_WATCHDOG_SECONDS * NSEC_PER_SEC;
++		mod_delayed_work(system_freezable_wq,
++				 &battmgr->op13_otg_supply_restore_work,
++				 OP13_OTG_SUPPLY_WATCHDOG_SECONDS * HZ);
++		ret = op13_otg_supply_start(&battmgr->op13_otg_supply_lease, &io);
++	} else {
++		mutex_lock(&battmgr->lock);
++		ret = op13_otg_supply_restore(&battmgr->op13_otg_supply_lease, &io);
++		mutex_unlock(&battmgr->lock);
++		cancel_delayed_work(&battmgr->op13_otg_supply_restore_work);
++		if (battmgr->op13_otg_wakeup && battmgr->op13_otg_awake) {
++			__pm_relax(battmgr->op13_otg_wakeup);
++			battmgr->op13_otg_awake = false;
++		}
++		if (ret)
++			return ret;
++		return count;
++	}
++out:
++	mutex_unlock(&battmgr->lock);
++	return ret ? ret : count;
++}
++
++static struct device_attribute dev_attr_oneplus13_otg_supply_lease =
++	__ATTR(oneplus13_otg_supply_lease, 0600, oneplus13_otg_supply_lease_show,
++	       oneplus13_otg_supply_lease_store);
++
+ static struct attribute *op13_otg_attrs[] = {
+ 	&dev_attr_oneplus13_otg_ap_enable.attr,
+ 	&dev_attr_oneplus13_otg_switch.attr,
+ 	&dev_attr_oneplus13_otg_lease.attr,
+ 	&dev_attr_oneplus13_otg_vbus_enable.attr,
+ 	&dev_attr_oneplus13_otg_boost_current.attr,
++	&dev_attr_oneplus13_otg_supply_lease.attr,
+ 	NULL,
+ };
+ 
+@@ -1775,6 +1948,9 @@ static umode_t op13_otg_visible(struct kobject *kobj, struct attribute *attr, in
+ 	if (attr == &dev_attr_oneplus13_otg_lease.attr &&
+ 	    !oneplus13_otg_lease_enabled)
+ 		return 0;
++	if (attr == &dev_attr_oneplus13_otg_supply_lease.attr &&
++	    !oneplus13_otg_supply_lease)
++		return 0;
+ 	return attr->mode;
+ }
+ 
+@@ -1925,6 +2101,8 @@ static int qcom_battmgr_probe(struct auxiliary_device *adev,
+ 	init_completion(&battmgr->op13_otg_ack);
+ 	spin_lock_init(&battmgr->op13_otg_lock);
+ 	INIT_DELAYED_WORK(&battmgr->op13_otg_restore_work, op13_otg_restore_worker);
++	INIT_DELAYED_WORK(&battmgr->op13_otg_supply_restore_work,
++			  op13_otg_supply_restore_worker);
+ 
+ 	match = of_match_device(qcom_battmgr_of_variants, dev->parent);
+ 	if (match)
+@@ -2008,12 +2186,16 @@ static int qcom_battmgr_probe(struct auxiliary_device *adev,
+ 	if (IS_ERR(battmgr->client))
+ 		return PTR_ERR(battmgr->client);
+ 
+-	if (oneplus13_otg_lease_enabled && op13_otg_machine()) {
++	if ((oneplus13_otg_lease_enabled || oneplus13_otg_supply_lease) &&
++	    op13_otg_machine()) {
+ 		battmgr->op13_otg_wakeup = wakeup_source_register(dev, "oneplus13-otg-lease");
+ 		if (!battmgr->op13_otg_wakeup)
+ 			return -ENOMEM;
+ 	}
+ 	ret = devm_add_action_or_reset(dev, op13_otg_lease_remove, battmgr);
++	if (ret)
++		return ret;
++	ret = devm_add_action_or_reset(dev, op13_otg_supply_remove, battmgr);
+ 	if (ret)
+ 		return ret;
+ 	pmic_glink_client_register(battmgr->client);

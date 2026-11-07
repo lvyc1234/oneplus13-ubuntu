@@ -6,14 +6,13 @@ Installed-Size: @INSTALLED_SIZE@
 Section: sound
 Priority: optional
 Depends: alsa-ucm-conf (>= 1.2.4), alsa-utils, python3
-Breaks: erhai-kernel (<< 0.3.0~)
 Description: OnePlus Pad 2 Pro (erhai) audio topology and configuration
  Device-specific AudioReach topology built from pinned upstream sources.
- The HiFi profile provides the two internal microphones; DisplayPort audio
- is disabled by default.
+ The HiFi profile provides the two internal microphones and an independent
+ DisplayPort playback candidate, using standard jack availability reporting.
  .
- The internal speakers are available by default at the stock amplifier
- level of -2.5 dB. erhai-audio-speaker disable persistently withdraws them.
- The stock DSP speaker protection and tuning are not implemented; the
- amplifier chip protections do not replace excursion and voice-coil
- temperature control. USB headset support is still under development.
+ The internal speakers are a candidate that stays off: erhai-audio-speaker
+ enable offers them until the next boot, at an amplifier level 20 dB below
+ the stock profile, and disable withdraws them. The stock speaker protection
+ and tuning have no counterpart here yet. USB headset support is still under
+ development.

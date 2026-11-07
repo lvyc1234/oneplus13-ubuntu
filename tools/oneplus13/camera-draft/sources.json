@@ -1,0 +1,248 @@
+{
+  "scope": "OFFLINE_CAMERA_COMPONENTS_NO_PHONE_INTEGRATION",
+  "kernel_repository": "https://github.com/yzddmr6/linux-sm8750-erhai.git",
+  "kernel_pin": "7a81d184e3098624d4342d8f4eff5e23674bcc9f",
+  "patches": [
+    {
+      "file": "patches/x1e-phy-v13/01.patch",
+      "sha256": "cca589e44fba2ee99d5bd4cfaa00cfe733f9594eabc02934cbaf8d69c6ee7e96",
+      "message_id": "20260720-x1e-csi2-phy-v13-1-160c31958863@linaro.org",
+      "subject": "[PATCH v13 1/2] dt-bindings: phy: qcom: Add CSI2 C-PHY/DPHY schema",
+      "source_url": "https://lore.kernel.org/all/20260720-x1e-csi2-phy-v13-0-160c31958863@linaro.org/t.mbox.gz"
+    },
+    {
+      "file": "patches/x1e-phy-v13/02.patch",
+      "sha256": "f0f60e99674c9ebcea793e109e43eafd605bda2da6f6f36e7d40b82867145129",
+      "message_id": "20260720-x1e-csi2-phy-v13-2-160c31958863@linaro.org",
+      "subject": "[PATCH v13 2/2] phy: qcom-mipi-csi2: Add a CSI2 MIPI DPHY driver",
+      "source_url": "https://lore.kernel.org/all/20260720-x1e-csi2-phy-v13-0-160c31958863@linaro.org/t.mbox.gz"
+    },
+    {
+      "file": "patches/x1e-camss-v12/01.patch",
+      "sha256": "0b0326f0eb62dcddfc06a2aeb1170b2af92c48d871fdfe15e7b9f712e6d21308",
+      "message_id": "20260708-b4-linux-next-25-03-13-dtsi-x1e80100-camss-v12-1-f8588da41f16@linaro.org",
+      "subject": "[PATCH v12 1/6] dt-bindings: media: qcom,x1e80100-camss: Add optional PHY handle definitions",
+      "source_url": "https://lore.kernel.org/all/20260708-b4-linux-next-25-03-13-dtsi-x1e80100-camss-v12-0-f8588da41f16@linaro.org/t.mbox.gz"
+    },
+    {
+      "file": "patches/x1e-camss-v12/02.patch",
+      "sha256": "cfacf1bcad210c9ee73f2bc6c8f61ad9cdd90b798305551333f7183ee762a8cd",
+      "message_id": "20260708-b4-linux-next-25-03-13-dtsi-x1e80100-camss-v12-2-f8588da41f16@linaro.org",
+      "subject": "[PATCH v12 2/6] dt-bindings: media: qcom,x1e80100-camss: Describe iommu entries",
+      "source_url": "https://lore.kernel.org/all/20260708-b4-linux-next-25-03-13-dtsi-x1e80100-camss-v12-0-f8588da41f16@linaro.org/t.mbox.gz"
+    },
+    {
+      "file": "patches/x1e-camss-v12/03.patch",
+      "sha256": "39756f3c3dca1b8e0a9f6fa1bd3bc0cddbda264fd98dfd748975a9ec7135b22a",
+      "message_id": "20260708-b4-linux-next-25-03-13-dtsi-x1e80100-camss-v12-3-f8588da41f16@linaro.org",
+      "subject": "[PATCH v12 3/6] media: qcom: camss: Add support to populate sub-devices",
+      "source_url": "https://lore.kernel.org/all/20260708-b4-linux-next-25-03-13-dtsi-x1e80100-camss-v12-0-f8588da41f16@linaro.org/t.mbox.gz"
+    },
+    {
+      "file": "patches/x1e-camss-v12/04.patch",
+      "sha256": "61dcffac59298e90f213278cb55034ce0f22447e798f530f2ee96869b68abbe9",
+      "message_id": "20260708-b4-linux-next-25-03-13-dtsi-x1e80100-camss-v12-4-f8588da41f16@linaro.org",
+      "subject": "[PATCH v12 4/6] media: qcom: camss: Add legacy_phy flag to SoC definition structures",
+      "source_url": "https://lore.kernel.org/all/20260708-b4-linux-next-25-03-13-dtsi-x1e80100-camss-v12-0-f8588da41f16@linaro.org/t.mbox.gz"
+    },
+    {
+      "file": "patches/x1e-camss-v12/05.patch",
+      "sha256": "fea38bf79a36846eb984bc21057cfbc412116df8e51cc1d0506f2d8e21c7c7c4",
+      "message_id": "20260708-b4-linux-next-25-03-13-dtsi-x1e80100-camss-v12-5-f8588da41f16@linaro.org",
+      "subject": "[PATCH v12 5/6] media: qcom: camss: Add support for PHY API devices",
+      "source_url": "https://lore.kernel.org/all/20260708-b4-linux-next-25-03-13-dtsi-x1e80100-camss-v12-0-f8588da41f16@linaro.org/t.mbox.gz"
+    },
+    {
+      "file": "patches/x1e-camss-v12/06.patch",
+      "sha256": "2523049e65038387b08fe0b22f9e64d36db3e2e2909f413bc5baeeedad7ea0e2",
+      "message_id": "20260708-b4-linux-next-25-03-13-dtsi-x1e80100-camss-v12-6-f8588da41f16@linaro.org",
+      "subject": "[PATCH v12 6/6] media: qcom: camss: Drop legacy PHY descriptions from x1e",
+      "source_url": "https://lore.kernel.org/all/20260708-b4-linux-next-25-03-13-dtsi-x1e80100-camss-v12-0-f8588da41f16@linaro.org/t.mbox.gz"
+    },
+    {
+      "file": "patches/kaanapali-v15/01.patch",
+      "sha256": "b1e4f4414ce8c72e9bcd065e29400d4d71aed76d4dd3bfdda7beb337bf9ab5bb",
+      "message_id": "20260720-kaanapali-camss-v15-1-c0b1c1167c5d@oss.qualcomm.com",
+      "subject": "[PATCH v15 1/8] dt-bindings: phy: qcom,x1e80100-csi2-phy: Add Kaanapali CSI2 PHY",
+      "source_url": "https://lore.kernel.org/all/20260720-kaanapali-camss-v15-0-c0b1c1167c5d@oss.qualcomm.com/t.mbox.gz"
+    },
+    {
+      "file": "patches/kaanapali-v15/02.patch",
+      "sha256": "e24ce7f49b02bdf75d98e7ea909cf8811d16b5d85ba93b2a2ce2d70391fa8b9c",
+      "message_id": "20260720-kaanapali-camss-v15-2-c0b1c1167c5d@oss.qualcomm.com",
+      "subject": "[PATCH v15 2/8] media: dt-bindings: Add CAMSS device for Kaanapali",
+      "source_url": "https://lore.kernel.org/all/20260720-kaanapali-camss-v15-0-c0b1c1167c5d@oss.qualcomm.com/t.mbox.gz"
+    },
+    {
+      "file": "patches/kaanapali-v15/03.patch",
+      "sha256": "d59cc8fa1767516e1170e63a575cdb13e85652463943ddf6bf09562f300fd470",
+      "message_id": "20260720-kaanapali-camss-v15-3-c0b1c1167c5d@oss.qualcomm.com",
+      "subject": "[PATCH v15 3/8] media: qcom: camss: Add Kaanapali compatible camss driver",
+      "source_url": "https://lore.kernel.org/all/20260720-kaanapali-camss-v15-0-c0b1c1167c5d@oss.qualcomm.com/t.mbox.gz"
+    },
+    {
+      "file": "patches/kaanapali-v15/04.patch",
+      "sha256": "caa402755ae8cba78b8e846883c39f063ad933cc16320eb2fe72b909c364217c",
+      "message_id": "20260720-kaanapali-camss-v15-4-c0b1c1167c5d@oss.qualcomm.com",
+      "subject": "[PATCH v15 4/8] phy: qcom-mipi-csi2: Parametrise the common status register offset",
+      "source_url": "https://lore.kernel.org/all/20260720-kaanapali-camss-v15-0-c0b1c1167c5d@oss.qualcomm.com/t.mbox.gz"
+    },
+    {
+      "file": "patches/kaanapali-v15/05.patch",
+      "sha256": "f105acc3226ed39a09bfe7d8b9731af168519cd0cc6477b0d96448ab15d5f01c",
+      "message_id": "20260720-kaanapali-camss-v15-5-c0b1c1167c5d@oss.qualcomm.com",
+      "subject": "[PATCH v15 5/8] media: qcom: camss: csiphy: Add support for v2.4.0 two-phase CSIPHY",
+      "source_url": "https://lore.kernel.org/all/20260720-kaanapali-camss-v15-0-c0b1c1167c5d@oss.qualcomm.com/t.mbox.gz"
+    },
+    {
+      "file": "patches/kaanapali-v15/06.patch",
+      "sha256": "c2bb9ed43497f2d2665ac411de86d29f40cc1c5e069d48e5e4b9de7972e43bdc",
+      "message_id": "20260720-kaanapali-camss-v15-6-c0b1c1167c5d@oss.qualcomm.com",
+      "subject": "[PATCH v15 6/8] media: qcom: camss: csid: Add support for CSID gen4",
+      "source_url": "https://lore.kernel.org/all/20260720-kaanapali-camss-v15-0-c0b1c1167c5d@oss.qualcomm.com/t.mbox.gz"
+    },
+    {
+      "file": "patches/kaanapali-v15/07.patch",
+      "sha256": "2d0bb97f9c9cc0956fb0b307d2e2b09e54a7b0f11817055dea71cfe6310e119f",
+      "message_id": "20260720-kaanapali-camss-v15-7-c0b1c1167c5d@oss.qualcomm.com",
+      "subject": "[PATCH v15 7/8] media: qcom: camss: vfe: Add support for VFE gen4",
+      "source_url": "https://lore.kernel.org/all/20260720-kaanapali-camss-v15-0-c0b1c1167c5d@oss.qualcomm.com/t.mbox.gz"
+    },
+    {
+      "file": "patches/kaanapali-v15/08.patch",
+      "sha256": "0732635d3429e540e6362039f38397929125cee6bfedc69d3e3b0229dd72fdbd",
+      "message_id": "20260720-kaanapali-camss-v15-8-c0b1c1167c5d@oss.qualcomm.com",
+      "subject": "[PATCH v15 8/8] media: qcom: camss: tpg: Add support for v2.4.0 TPG",
+      "source_url": "https://lore.kernel.org/all/20260720-kaanapali-camss-v15-0-c0b1c1167c5d@oss.qualcomm.com/t.mbox.gz"
+    },
+    {
+      "file": "patches/sm8750-v6/01.patch",
+      "sha256": "0a67c38dcf0b43cde64fd6462a4fd672df329a7bfbada2bd127b423e1fd3fc6e",
+      "message_id": "20260721-add-support-for-camss-on-sm8750-v6-1-a5f841061d18@oss.qualcomm.com",
+      "subject": "[PATCH v6 1/7] dt-bindings: phy: qcom,x1e80100-csi2-phy: Add SM8750 CSI2 PHY",
+      "source_url": "https://lore.kernel.org/all/20260721-add-support-for-camss-on-sm8750-v6-0-a5f841061d18@oss.qualcomm.com/t.mbox.gz"
+    },
+    {
+      "file": "patches/sm8750-v6/02.patch",
+      "sha256": "6c00922f241085c390569224eff923095664b8b6957913730c5efdb6c7fa412f",
+      "message_id": "20260721-add-support-for-camss-on-sm8750-v6-2-a5f841061d18@oss.qualcomm.com",
+      "subject": "[PATCH v6 2/7] media: dt-bindings: Add CAMSS device for SM8750",
+      "source_url": "https://lore.kernel.org/all/20260721-add-support-for-camss-on-sm8750-v6-0-a5f841061d18@oss.qualcomm.com/t.mbox.gz"
+    },
+    {
+      "file": "patches/sm8750-v6/03.patch",
+      "sha256": "9e39c583ff6029f25a2085d3f596cd5ae105019156e449a24d2f34bc3c3b0203",
+      "message_id": "20260721-add-support-for-camss-on-sm8750-v6-3-a5f841061d18@oss.qualcomm.com",
+      "subject": "[PATCH v6 3/7] media: qcom: camss: Add SM8750 compatible camss driver",
+      "source_url": "https://lore.kernel.org/all/20260721-add-support-for-camss-on-sm8750-v6-0-a5f841061d18@oss.qualcomm.com/t.mbox.gz"
+    },
+    {
+      "file": "patches/sm8750-v6/04.patch",
+      "sha256": "d3337452d8cd1f0052ace0a221647d3eaf24c6d2fc3c14b9009142e830dca054",
+      "message_id": "20260721-add-support-for-camss-on-sm8750-v6-4-a5f841061d18@oss.qualcomm.com",
+      "subject": "[PATCH v6 4/7] media: qcom: camss: csiphy: Add support for v2.3.0 two-phase CSIPHY",
+      "source_url": "https://lore.kernel.org/all/20260721-add-support-for-camss-on-sm8750-v6-0-a5f841061d18@oss.qualcomm.com/t.mbox.gz"
+    },
+    {
+      "file": "patches/sm8750-v6/05.patch",
+      "sha256": "661e2a0791c40108f0ffcc392e5216a54eefea7c92ea38cd7184add784a3232c",
+      "message_id": "20260721-add-support-for-camss-on-sm8750-v6-5-a5f841061d18@oss.qualcomm.com",
+      "subject": "[PATCH v6 5/7] media: qcom: camss: csid: Add support for CSID 980",
+      "source_url": "https://lore.kernel.org/all/20260721-add-support-for-camss-on-sm8750-v6-0-a5f841061d18@oss.qualcomm.com/t.mbox.gz"
+    },
+    {
+      "file": "patches/sm8750-v6/06.patch",
+      "sha256": "60ed1cf322e6efe340921b821eb57853dc43a2a57265f8b4afde29d98521a485",
+      "message_id": "20260721-add-support-for-camss-on-sm8750-v6-6-a5f841061d18@oss.qualcomm.com",
+      "subject": "[PATCH v6 6/7] media: qcom: camss: vfe: Add support for VFE 980",
+      "source_url": "https://lore.kernel.org/all/20260721-add-support-for-camss-on-sm8750-v6-0-a5f841061d18@oss.qualcomm.com/t.mbox.gz"
+    },
+    {
+      "file": "patches/sm8750-v6/07.patch",
+      "sha256": "d50557b92ae77020e2dadb2ad9acbd712c1830025acf200d829c6b370a19d3c4",
+      "message_id": "20260721-add-support-for-camss-on-sm8750-v6-7-a5f841061d18@oss.qualcomm.com",
+      "subject": "[PATCH v6 7/7] media: qcom: camss: tpg: Add support for v2.3.0 TPG",
+      "source_url": "https://lore.kernel.org/all/20260721-add-support-for-camss-on-sm8750-v6-0-a5f841061d18@oss.qualcomm.com/t.mbox.gz"
+    }
+  ],
+  "phone_dt_included": false,
+  "phone_calibration_included": false,
+  "hardware_qualified": false,
+  "local_fixes": [
+    {
+      "file": "fixes/0001-remove-obsolete-external-phy-local.patch",
+      "sha256": "5887604ea73fceb4bbbf27253e0185c4bdb0bcf1a9a876168a2c0ef4dc1681ce",
+      "reason": "remove unused declaration observed by native W=1/-Werror compile",
+      "author": "Codex <codex@openai.com>"
+    },
+    {
+      "file": "fixes/0002-check-phy-setup-errors.patch",
+      "sha256": "b65771d1eff79f76b8f8828b42b90ecf0050a8c965be66f0d4e4d797d72dd540",
+      "reason": "native unused-local failure and checked timing/mode errors before PHY configuration or power",
+      "author": "Codex <codex@openai.com>"
+    }
+  ],
+  "disabled_cci_resources": [
+    {
+      "file": "patches/sm8750-dtsi-v2/02.patch",
+      "sha256": "9aa0e7fddd04efad690bebc1bd594e4a08bc52c76a8e9c8140251c082137b7b2",
+      "subject": "[PATCH v2 2/3] arm64: dts: qcom: sm8750: Add CCI definitions",
+      "message_id": "<20260618-pakala-camera-v2-2-9fbb729fd242@oss.qualcomm.com>",
+      "source_url": "https://patchew.org/linux/20260618-pakala-camera-v2-0-9fbb729fd242@oss.qualcomm.com/mbox"
+    },
+    {
+      "file": "patches/sm8750-dtsi-v2/03.patch",
+      "sha256": "5b068e04d9e76950150a3f8a4966aa2bdbbef5e4537190af9cd44b1bb16df574",
+      "subject": "[PATCH v2 3/3] arm64: dts: qcom: sm8750: Add camera MCLK pinctrl",
+      "message_id": "<20260618-pakala-camera-v2-3-9fbb729fd242@oss.qualcomm.com>",
+      "source_url": "https://patchew.org/linux/20260618-pakala-camera-v2-0-9fbb729fd242@oss.qualcomm.com/mbox"
+    }
+  ],
+  "kernel_archive": {
+    "url": "https://codeload.github.com/yzddmr6/linux-sm8750-erhai/legacy.tar.gz/7a81d184e3098624d4342d8f4eff5e23674bcc9f",
+    "sha256": "ab2c3b3eee24131a39ae28dde468810a1908efe180eef29038078d7b7f368d90"
+  },
+  "resource_series_review": "v2 was rejected pending driver dependencies; staged disabled CCI and pinctrl only, no CAMSS board enable or sensor activation",
+  "resource_rebases": [
+    {
+      "file": "fixes/0003-rebase-disabled-cci-mclk-resources.patch",
+      "sha256": "d6f1c546dace9d6bbc821813a17efeae846ed43e53d732988548aa1ca5e9ca97",
+      "author": "Codex <codex@openai.com>",
+      "reason": "Original CCI context references the unstaged old CAMSS node; move only disabled CCI and pinctrl additions to the exact kernel pin"
+    }
+  ],
+  "sensor_patches": [
+    {
+      "file": "patches/s5kjn5-v6/01.patch",
+      "sha256": "a55df776fd90b0baaa64b5feae7d42a9155864856d1c0f4c8960761708feab58",
+      "subject": "[PATCH v6 1/2] dt-bindings: media: i2c: Add Samsung S5KJN5 image\n sensor",
+      "message_id": "<20260930-sk5jn5-v6-1-517c9b34008a@oss.qualcomm.com>",
+      "source_url": "https://patchew.org/linux/20260930-sk5jn5-v6-0-517c9b34008a@oss.qualcomm.com/mbox"
+    },
+    {
+      "file": "patches/s5kjn5-v6/02.patch",
+      "sha256": "d8b1314a5c808e1e5f2d5d07dbbeb525336087f19e27760e8ebb578b0450980d",
+      "subject": "[PATCH v6 2/2] media: i2c: Add Samsung S5KJN5 image sensor driver",
+      "message_id": "<20260930-sk5jn5-v6-2-517c9b34008a@oss.qualcomm.com>",
+      "source_url": "https://patchew.org/linux/20260930-sk5jn5-v6-0-517c9b34008a@oss.qualcomm.com/mbox"
+    }
+  ],
+  "sensor_compat_fixes": [
+    {
+      "file": "fixes/0004-s5kjn5-pinned-v4l2-pad-api.patch",
+      "sha256": "8dd541ef16f69c61697383bc009e069ec5116448f89baceefda2fa1a150730f1",
+      "author": "Codex <codex@openai.com>",
+      "reason": "Match exact pinned pre-client-info V4L2 pad callback API; original mode tables untouched"
+    },
+    {
+      "file": "fixes/0005-s5kjn5-cphy-3trio.patch",
+      "sha256": "74270cd6d3c843c67d50cc4f8f73279c082a48a8412c288d2150a1a9709333e0",
+      "author": "Codex <codex@openai.com>",
+      "reason": "Use the phone's 19.2MHz three-trio C-PHY timing and report link/PHY timing to CAMSS; apply the complete three-register stock normal-preview output sequence in the vendor register page"
+    }
+  ],
+  "sensor_generated_files": {
+    "drivers/media/i2c/s5kjn5.c": "3c946eafce5499c146c6a5dd4783803e8ce6a363ac5fe9fefc2a6fb30b1a388f",
+    "Documentation/devicetree/bindings/media/i2c/samsung,s5kjn5.yaml": "fd0171ba32ee9a4716fa1017b76a6b314205a7d40ca64feb6a884a46c49d79a9"
+  }
+}

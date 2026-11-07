@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: GPL-2.0-only
+[Unit]
+ConditionKernelCommandLine=oneplus13.desktop=1
+ConditionPathExists=|/run/oneplus13/ram-session
+ConditionPathExists=|/run/oneplus13/persistent-session
+Description=OnePlus 13 binary panel blanking
+Requires=oneplus13-display-power.socket
+After=systemd-logind.service
+ConditionDirectoryNotEmpty=/sys/class/backlight
+
+[Service]
+# Skip unless exactly one matching binary AA569 panel backlight exists.
+ExecCondition=/usr/libexec/oneplus13-display-power.py --check
+ExecStart=/usr/libexec/oneplus13-display-power.py
+Restart=on-failure
+RestartSec=1
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=
+ReadWritePaths=/sys/class/backlight
+TimeoutStopSec=5

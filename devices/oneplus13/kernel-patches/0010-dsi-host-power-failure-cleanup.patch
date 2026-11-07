@@ -1,0 +1,38 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH 10/10] drm/msm/dsi: balance host power-on resource failures
+
+Propagate runtime resume errors and release PM/OPP on clock setup failure.
+Author: Codex. No hardware Tested-by claim.
+
+diff --git a/drivers/gpu/drm/msm/dsi/dsi_host.c b/drivers/gpu/drm/msm/dsi/dsi_host.c
+--- a/drivers/gpu/drm/msm/dsi/dsi_host.c
++++ b/drivers/gpu/drm/msm/dsi/dsi_host.c
+@@ -2814,14 +2814,16 @@
+ 		goto unlock_ret;
+ 	}
+ 
+-	pm_runtime_get_sync(&msm_host->pdev->dev);
++	ret = pm_runtime_resume_and_get(&msm_host->pdev->dev);
++	if (ret < 0)
++		goto fail_disable_reg;
+ 	ret = cfg_hnd->ops->link_clk_set_rate(msm_host);
+ 	if (!ret)
+ 		ret = cfg_hnd->ops->link_clk_enable(msm_host);
+ 	if (ret) {
+ 		pr_err("%s: failed to enable link clocks. ret=%d\n",
+ 		       __func__, ret);
+-		goto fail_disable_reg;
++		goto fail_put_pm;
+ 	}
+ 
+ 	ret = pinctrl_pm_select_default_state(&msm_host->pdev->dev);
+@@ -2842,6 +2844,9 @@
+ 
+ fail_disable_clk:
+ 	cfg_hnd->ops->link_clk_disable(msm_host);
++fail_put_pm:
++	/* A failed set_rate can leave an OPP vote even without enabled clocks. */
++	dev_pm_opp_set_rate(&msm_host->pdev->dev, 0);
+ 	pm_runtime_put(&msm_host->pdev->dev);
+ fail_disable_reg:
+ 	regulator_bulk_disable(msm_host->cfg_hnd->cfg->num_regulators,

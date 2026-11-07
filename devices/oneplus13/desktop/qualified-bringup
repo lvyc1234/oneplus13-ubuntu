@@ -1,0 +1,203 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-2.0-only
+# Explicit previously-qualified features, only inside a protected RAM session.
+set -euo pipefail
+mode=${1:-}
+case "$mode" in --wifi|--all|--firstboot) ;; *) echo 'Usage: qualified-bringup {--wifi|--all|--firstboot}'; exit 2 ;; esac
+test -f /run/oneplus13/ram-session
+grep -q ' / overlay ' /proc/mounts
+systemctl is-active --quiet oneplus13-ram-guard.service
+systemctl is-active --quiet oneplus13-ram-deadline.timer
+for device in /sys/class/block/*; do
+    case "${device##*/}" in ram*|zram*|loop*) continue;; esac
+    test "$(cat "$device/ro")" = 1
+done
+test ! -e /run/oneplus13/qualified-bringup-attempted
+touch /run/oneplus13/qualified-bringup-attempted
+bindings=$(python3 - <<'PY'
+import hashlib,json,os,pathlib,shlex
+p=pathlib.Path('/usr/lib/oneplus13-desktop/runtime-bindings.private.json')
+v=json.loads(p.read_text())
+assert v['kernel_release']==os.uname().release
+for n,h in v['firmware_sha256'].items():
+    assert hashlib.sha256((pathlib.Path('/usr/lib/firmware')/n).read_bytes()).hexdigest()==h
+print('PLATFORM_KERNEL_RELEASE='+shlex.quote(v['kernel_release']))
+for k in ['CPUCP_MODULE_SHA256','SOCINFO_MODULE_SHA256','CEC_MODULE_SHA256','UBWC_MODULE_SHA256','MODULE_POLICY_SHA256']:
+    print(k+'='+shlex.quote(v[k]))
+PY
+)
+eval "$bindings"
+export PLATFORM_KERNEL_RELEASE CPUCP_MODULE_SHA256 SOCINFO_MODULE_SHA256
+timeout -k 1 28 bash /usr/libexec/oneplus13-ram-platform-prerequisites.sh
+ADSP=''
+for rp in /sys/class/remoteproc/remoteproc*; do
+    case "$(cat "$rp/name")" in *adsp*) ADSP=$rp;; esac
+done
+test -n "$ADSP"
+case "$(cat "$ADSP/state")" in
+    offline) timeout -k 2 25 bash -c 'echo start > "$1/state"' _ "$ADSP";;
+    running) :;;
+    *) echo UNEXPECTED_ADSP_STATE; exit 3;;
+esac
+test "$(cat "$ADSP/state")" = running
+# WiFi needs ADSP/platform initialization, but must not depend on successful
+# accelerometer discovery. Keep the sensor attach path for --all below.
+prepare_desktop_sensors() {
+# Mobile sensor data is available only after the protected ADSP attach path is
+# present. This bypasses the global peripheral denial for one reviewed
+# module load; the udev rule then restricts the resulting node to the sensor
+# daemon and marks it for iio-sensor-proxy's SSC backend.
+modprobe --ignore-install fastrpc
+udevadm settle --timeout=5
+for attempt in $(seq 1 20); do
+    test -c /dev/fastrpc-adsp-secure && break
+    sleep 1
+done
+test -c /dev/fastrpc-adsp-secure
+systemctl start oneplus13-sensor-fileserver.service
+for attempt in $(seq 1 20); do
+    test "$(systemctl show oneplus13-sensor-fileserver.service -p ActiveState --value)" = active && break
+    sleep 1
+done
+test "$(systemctl show oneplus13-sensor-fileserver.service -p ActiveState --value)" = active
+sleep 2
+systemctl start oneplus13-sensor-proxy.service
+for attempt in $(seq 1 20); do
+    test "$(systemctl show oneplus13-sensor-proxy.service -p ActiveState --value)" = active && break
+    sleep 1
+done
+test "$(systemctl show oneplus13-sensor-proxy.service -p ActiveState --value)" = active
+for attempt in $(seq 1 10); do
+    test "$(busctl --system get-property net.hadess.SensorProxy \
+        /net/hadess/SensorProxy net.hadess.SensorProxy HasAccelerometer)" = 'b true' && break
+    sleep 1
+done
+test "$(busctl --system get-property net.hadess.SensorProxy \
+    /net/hadess/SensorProxy net.hadess.SensorProxy HasAccelerometer)" = 'b true'
+}
+
+timeout -k 1 6 systemctl start wpa_supplicant.service
+timeout -k 1 3 systemctl is-active --quiet wpa_supplicant.service
+timeout -k 1 4 busctl --system get-property fi.w1.wpa_supplicant1 /fi/w1/wpa_supplicant1 fi.w1.wpa_supplicant1 Interfaces
+timeout -k 2 40 bash -c 'modprobe pwrseq_qcom_wcn; sleep 12; modprobe mhi; modprobe pci_pwrctrl_pwrseq; modprobe ath12k_wifi7'
+for attempt in $(seq 1 15); do
+    test -n "$(/usr/sbin/iw dev | awk '$1=="Interface"{print $2;exit}')" && break
+    sleep 1
+done
+test -n "$(/usr/sbin/iw dev | awk '$1=="Interface"{print $2;exit}')"
+echo QUALIFIED_WIFI_DRIVER_READY
+if [ "$mode" = --all ] || [ "$mode" = --firstboot ]; then
+    if [ "$mode" = --firstboot ]; then
+        # Full Ubuntu adds the distro proxy with the same D-Bus name. Keep
+        # only the phone's qualified SSC backend eligible for activation.
+        if systemctl cat iio-sensor-proxy.service >/dev/null 2>&1; then
+            systemctl stop iio-sensor-proxy.service
+        fi
+        systemctl mask --runtime iio-sensor-proxy.service
+        systemctl daemon-reload
+        python3 /usr/libexec/oneplus13-ram-sensor-desktop.py setup
+    fi
+    prepare_desktop_sensors
+    timeout -k 1 15 modprobe dodge-s3910
+    timeout -k 1 6 systemctl start bluetooth
+    timeout -k 1 6 /usr/sbin/erhai-bt-address --generate
+    timeout -k 1 12 /usr/sbin/erhai-bt-address --apply --wait 8
+    timeout -k 1 6 /usr/sbin/erhai-bt-address --power-on
+    timeout -k 1 12 python3 /usr/libexec/oneplus13-ram-display-prerequisites.py --release "$PLATFORM_KERNEL_RELEASE" --sha256 "$CEC_MODULE_SHA256" --ubwc-sha256 "$UBWC_MODULE_SHA256" --policy-sha256 "$MODULE_POLICY_SHA256"
+    python3 /run/oneplus13/native/start-native-display --check
+    python3 /run/oneplus13/native/start-native-display --activate
+    # Initial Setup owns first-user creation. Reuse the qualified hardware
+    # sequence, then leave account/session setup to GDM.
+    if [ "$mode" = --firstboot ]; then
+        grep -q '^GSK_RENDERER=gl$' /etc/environment || echo GSK_RENDERER=gl >> /etc/environment
+        grep -q '^CLUTTER_PAINT=disable-clipped-redraws$' /etc/environment || echo CLUTTER_PAINT=disable-clipped-redraws >> /etc/environment
+        echo QUALIFIED_FIRSTBOOT_HARDWARE_READY
+        exit 0
+    fi
+    getent passwd a >/dev/null || { useradd -m -s /bin/bash -G adm,sudo a; echo 'a:a' | chpasswd; }
+    install -d -m 0755 /var/lib/AccountsService/users
+    cat > /var/lib/AccountsService/users/a <<'EOF'
+[User]
+Language=zh_CN.UTF-8
+XSession=ubuntu
+SystemAccount=false
+EOF
+    chmod 0600 /var/lib/AccountsService/users/a
+    printf 'run_im ibus\n' > /home/a/.xinputrc
+    chown a:a /home/a/.xinputrc
+    grep -q '^GSK_RENDERER=gl$' /etc/environment || echo GSK_RENDERER=gl >> /etc/environment
+    grep -q '^CLUTTER_PAINT=disable-clipped-redraws$' /etc/environment || echo CLUTTER_PAINT=disable-clipped-redraws >> /etc/environment
+    python3 /usr/libexec/oneplus13-ram-desktop-check.py --configure
+    timeout -k 1 6 systemctl restart gdm
+    for attempt in $(seq 1 15); do
+        test -S /run/user/1000/bus && break
+        sleep 1
+    done
+    test -S /run/user/1000/bus
+    # The user bus exists before GNOME Shell has finished initializing. Set the
+    # sources only after the shell process appears, then read back and repair
+    # the initialization-time duplicate that otherwise survives the session.
+    for attempt in $(seq 1 20); do
+        pgrep -u a -x gnome-shell >/dev/null && break
+        sleep 1
+    done
+    pgrep -u a -x gnome-shell >/dev/null
+    # Keep the Ubuntu Dock visible across window and orientation changes. The
+    # distro override enables the extension but leaves intellihide active, so
+    # the dock can appear absent when a window is focused or maximized.
+    runuser -u a -- env XDG_RUNTIME_DIR=/run/user/1000 \
+        DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+        gnome-extensions enable ubuntu-dock@ubuntu.com
+    for item in \
+        'dock-fixed true' \
+        'autohide false' \
+        'intellihide false' \
+        "dock-position 'LEFT'" \
+        'extend-height true'; do
+        runuser -u a -- env XDG_RUNTIME_DIR=/run/user/1000 \
+            DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+            gsettings set org.gnome.shell.extensions.dash-to-dock $item
+    done
+    session_env='XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus'
+    test "$(runuser -u a -- env $session_env gsettings get org.gnome.shell.extensions.dash-to-dock dock-fixed)" = true
+    test "$(runuser -u a -- env $session_env gsettings get org.gnome.shell.extensions.dash-to-dock autohide)" = false
+    test "$(runuser -u a -- env $session_env gsettings get org.gnome.shell.extensions.dash-to-dock intellihide)" = false
+    test "$(runuser -u a -- env $session_env gsettings get org.gnome.shell.extensions.dash-to-dock dock-position)" = "'LEFT'"
+    test "$(runuser -u a -- env $session_env gsettings get org.gnome.shell.extensions.dash-to-dock extend-height)" = true
+    # GNOME Settings Daemon consumes SensorProxy's accelerometer claim and
+    # rotates the Wayland output without restarting GDM or GNOME Shell.
+    runuser -u a -- env XDG_RUNTIME_DIR=/run/user/1000 \
+        DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+        gsettings set org.gnome.settings-daemon.peripherals.touchscreen orientation-lock false
+    test "$(runuser -u a -- env $session_env gsettings get \
+        org.gnome.settings-daemon.peripherals.touchscreen orientation-lock)" = false
+    # IBus/GNOME finish loading their session sources asynchronously. Let that
+    # one-time initialization settle before applying the user preference.
+    sleep 8
+    expected_sources="[('xkb', 'us'), ('ibus', 'libpinyin')]"
+    actual_sources=
+    for attempt in $(seq 1 5); do
+        runuser -u a -- env XDG_RUNTIME_DIR=/run/user/1000 \
+            DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+            gsettings set org.gnome.desktop.input-sources sources \
+            "$expected_sources"
+        runuser -u a -- env XDG_RUNTIME_DIR=/run/user/1000 \
+            DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+            gsettings set org.gnome.desktop.input-sources mru-sources \
+            "$expected_sources"
+        actual_sources=$(runuser -u a -- env XDG_RUNTIME_DIR=/run/user/1000 \
+            DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+            gsettings get org.gnome.desktop.input-sources sources)
+        test "$actual_sources" = "$expected_sources" && break
+        sleep 1
+    done
+    sleep 2
+    actual_sources=$(runuser -u a -- env XDG_RUNTIME_DIR=/run/user/1000 \
+        DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+        gsettings get org.gnome.desktop.input-sources sources)
+    test "$actual_sources" = "$expected_sources"
+    runuser -u a -- env XDG_RUNTIME_DIR=/run/user/1000 \
+        DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+        gsettings set org.gnome.system.locale region zh_CN
+    echo QUALIFIED_DESKTOP_TOUCH_BLUETOOTH_STARTED
+fi

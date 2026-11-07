@@ -1,0 +1,42 @@
+--- a/drivers/watchdog/gunyah_wdt.c
++++ b/drivers/watchdog/gunyah_wdt.c
+@@ -165,6 +165,28 @@
+ 	.restart = gunyah_wdt_restart
+ };
+ 
++/* Read-only diagnostics: issue STATUS only, never control, ping or set time. */
++static ssize_t hypervisor_status_show(struct device *dev,
++				     struct device_attribute *attr, char *buf)
++{
++	struct arm_smccc_res res;
++
++	arm_smccc_1_1_smc(GUNYAH_WDT_STATUS, 0, 0, &res);
++
++	return sysfs_emit(buf,
++			  "result=%ld enabled=%lu expired=%lu elapsed_raw=%lu\n",
++			  (long)res.a0, res.a1 & 1, (res.a1 >> 31) & 1, res.a2);
++}
++static DEVICE_ATTR(hypervisor_status, 0400, hypervisor_status_show, NULL);
++
++static struct attribute *gunyah_wdt_diagnostic_attrs[] = {
++	&dev_attr_hypervisor_status.attr,
++	NULL,
++};
++static const struct attribute_group gunyah_wdt_diagnostic_group = {
++	.attrs = gunyah_wdt_diagnostic_attrs,
++};
++
+ static int gunyah_wdt_probe(struct platform_device *pdev)
+ {
+ 	struct watchdog_device *wdd;
+@@ -199,6 +221,10 @@
+ 	platform_set_drvdata(pdev, wdd);
+ 	watchdog_set_restart_priority(wdd, 0);
+ 
++	ret = devm_device_add_group(dev, &gunyah_wdt_diagnostic_group);
++	if (ret)
++		return ret;
++
+ 	return devm_watchdog_register_device(dev, wdd);
+ }
+ 

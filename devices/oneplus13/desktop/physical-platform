@@ -1,0 +1,30 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# Derived from the project's erhai-physical-platform; phone guards are separate.
+set -eu
+sysroot=${1:-/sys}
+case "$sysroot" in /*) ;; *) echo 'expected an absolute sysfs mount path' >&2; exit 2 ;; esac
+base=$sysroot/firmware/devicetree/base
+# Reuse the original erhai helper's model + chassis identity boundary. The
+# phone's ABL replaces both root model and compatible with its selected stock
+# board strings. Accept only the exact compiled or observed dodge identity;
+# a generic Sun MTP board or a tablet must never reach the export correction.
+model=$(tr '\000' '\n' < "$base/model")
+case "$model" in
+    'OnePlus 13 (offline bring-up candidate)'|'OnePlus 13 (AA569 native display experimental candidate)')
+        tr '\000' '\n' < "$base/compatible" | grep -qx oneplus,dodge
+        tr '\000' '\n' < "$base/compatible" | grep -qx qcom,sm8750 ;;
+    'Qualcomm Technologies, Inc. Sun MTP,dodge')
+        tr '\000' '\n' < "$base/compatible" | grep -qx qcom,sun ;;
+    *) echo "physical platform: unsupported phone '$model'" >&2; exit 1 ;;
+esac
+[ "$(tr '\000' '\n' < "$base/chassis-type")" = handset ]
+hyper=$base/hypervisor
+[ -d "$hyper" ] || exit 0
+tr '\000' '\n' < "$hyper/compatible" | grep -qx qcom,gunyah-hypervisor
+[ "$(od -An -tx1 "$hyper/qcom,gunyah-vm/qcom,vmid" | tr -d ' \n')" = 00000003 ]
+for device in "$sysroot"/bus/platform/devices/hypervisor*; do
+    [ ! -e "$device/driver" ] || { echo 'Hypervisor has a bound driver'; exit 1; }
+done
+mount -t tmpfs -o ro,nosuid,nodev,noexec,size=4k,mode=0555 oneplus13-physical-platform "$hyper"
+echo 'ONEPLUS13_PHYSICAL_PLATFORM_EXPORT_CORRECTED'

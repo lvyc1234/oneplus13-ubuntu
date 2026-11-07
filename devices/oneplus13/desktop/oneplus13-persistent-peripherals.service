@@ -1,0 +1,14 @@
+[Unit]
+Description=Initialize OnePlus 13 WiFi and orientation sensors
+ConditionKernelCommandLine=oneplus13.persistent=1
+Requires=oneplus13-persistent-hardware.service
+After=oneplus13-persistent-hardware.service NetworkManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/python3 /usr/libexec/oneplus13-persistent-peripherals.py
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target

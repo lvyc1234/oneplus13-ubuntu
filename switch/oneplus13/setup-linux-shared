@@ -1,0 +1,52 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# Configure the owner view of a prepared Android shared-media filesystem.
+set -eu
+
+[ "$(id -u)" = 0 ]
+[ "$#" = 1 ]
+volume=/mnt/shared
+media=$volume/0
+[ "$(findmnt -n -o FSTYPE --mountpoint "$volume")" = ext4 ]
+[ "$(findmnt -n -o UUID --mountpoint "$volume")" = "$1" ]
+[ -d "$media" ]
+[ ! -L "$media" ]
+user=$(getent passwd 1000 | cut -d: -f1)
+home=$(getent passwd 1000 | cut -d: -f6)
+[ "$(stat -c %u "$home")" = 1000 ]
+
+for folder in Download Documents Pictures Music Movies; do
+    [ ! -L "$media/$folder" ]
+    if [ ! -d "$media/$folder" ]; then
+        install -d -o 1023 -g 1023 -m 2770 "$media/$folder"
+    fi
+done
+# Keep access to the volume root limited. Public media needs compatible mode
+# bits because Android's emulated FUSE view does not expose named POSIX ACLs.
+setfacl -m u:1000:rx "$volume"
+find "$media" -xdev -path "$media/Android" -prune -o -type d \
+    -exec setfacl -m u:1000:rwx,u:1023:rwx,d:u:1000:rwx,d:u:1023:rwx,d:o::rwx {} +
+find "$media" -xdev -path "$media/Android" -prune -o -type f \
+    -exec setfacl -m u:1000:rw,u:1023:rw {} +
+find "$media" -xdev -path "$media/Android" -prune -o -type f -uid 1000 \
+    -exec chmod o+rw {} +
+
+for item in Documents:Documents Downloads:Download Pictures:Pictures Music:Music Videos:Movies Shared:.; do
+    name=${item%:*}
+    target=${item#*:}
+    case "$target" in .) dest=$media ;; *) dest=$media/$target ;; esac
+    path=$home/$name
+    if [ -L "$path" ]; then
+        case "$(readlink "$path")" in
+            "$volume"|"$volume/$name") runuser -u "$user" -- ln -sfn "$dest" "$path" ;;
+        esac
+    elif [ ! -e "$path" ]; then
+        runuser -u "$user" -- ln -s "$dest" "$path"
+    fi
+    skel=/etc/skel/$name
+    if [ -L "$skel" ]; then
+        case "$(readlink "$skel")" in
+            "$volume"|"$volume/$name") ln -sfn "$dest" "$skel" ;;
+        esac
+    fi
+done

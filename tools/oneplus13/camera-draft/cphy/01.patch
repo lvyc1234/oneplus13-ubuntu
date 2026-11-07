@@ -1,0 +1,99 @@
+From: Nihal Kumar Gupta <nihal.gupta@oss.qualcomm.com>
+Date: Sat, 17 Oct 2026 22:43:08 +0530
+Subject: [PATCH RFC 1/6] phy: core: Add MIPI C-PHY configurations
+Message-Id: <20261017-cphy_support-v1-1-8b0e1237ce95@oss.qualcomm.com>
+
+MIPI CSI-2 receivers can be connected through C-PHY as well as D-PHY.
+C-PHY uses trios instead of lanes and needs mode-specific timings passed
+to the PHY provider.
+
+Add PHY_MODE_MIPI_CPHY and C-PHY configure option carrying the link rate,
+trio count and C-PHY prepare/preamble timing.
+
+Signed-off-by: Nihal Kumar Gupta <nihal.gupta@oss.qualcomm.com>
+---
+ include/linux/phy/phy.h | 47 +++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 47 insertions(+)
+
+diff --git a/include/linux/phy/phy.h b/include/linux/phy/phy.h
+index c480d6cb42c500a295eef3bdf42fbc6d36f54bf8..c3784b679f3a26686324286d407cfa9d258579f1 100644
+--- a/include/linux/phy/phy.h
++++ b/include/linux/phy/phy.h
+@@ -47,6 +47,7 @@ enum phy_mode {
+ 	PHY_MODE_DP,
+ 	PHY_MODE_HDMI,
+ 	PHY_MODE_TBT,
++	PHY_MODE_MIPI_CPHY,
+ };
+ 
+ enum phy_media {
+@@ -64,11 +65,56 @@ union phy_notify {
+ 	enum phy_ufs_state ufs_state;
+ };
+ 
++/**
++ * struct phy_configure_opts_mipi_cphy - MIPI C-PHY configuration set
++ *
++ * This structure is used to represent the configuration state of a
++ * MIPI C-PHY phy.
++ */
++struct phy_configure_opts_mipi_cphy {
++	/**
++	 * @symbol_rate:
++	 *
++	 * Symbol rate per trio, in symbols per second.
++	 */
++	u64 symbol_rate;
++
++	/**
++	 * @trios:
++	 *
++	 * Number of active C-PHY trios.
++	 *
++	 * Minimum value: 1
++	 * Maximum value: 3
++	 */
++	unsigned int trios;
++
++	/**
++	 * @t_prepare_ns:
++	 *
++	 * C-PHY T_PREPARE timing value, in nanoseconds.
++	 * Time the transmitter drives the LP-00 state before
++	 * starting the HS preamble sequence.
++	 */
++	u32 t_prepare_ns;
++
++	/**
++	 * @t_preamble_ns:
++	 *
++	 * C-PHY T_PREAMBLE timing value, in nanoseconds.
++	 * Duration of the HS preamble sequence transmitted
++	 * before the first payload symbol.
++	 */
++	u32 t_preamble_ns;
++};
++
+ /**
+  * union phy_configure_opts - Opaque generic phy configuration
+  *
+  * @mipi_dphy:	Configuration set applicable for phys supporting
+  *		the MIPI_DPHY phy mode.
++ * @mipi_cphy:	Configuration set applicable for phys supporting
++ *		the MIPI_CPHY phy mode.
+  * @dp:		Configuration set applicable for phys supporting
+  *		the DisplayPort protocol.
+  * @lvds:	Configuration set applicable for phys supporting
+@@ -78,6 +124,7 @@ union phy_notify {
+  */
+ union phy_configure_opts {
+ 	struct phy_configure_opts_mipi_dphy	mipi_dphy;
++	struct phy_configure_opts_mipi_cphy	mipi_cphy;
+ 	struct phy_configure_opts_dp		dp;
+ 	struct phy_configure_opts_lvds		lvds;
+ 	struct phy_configure_opts_hdmi		hdmi;
+
+-- 
+2.34.1
+
+

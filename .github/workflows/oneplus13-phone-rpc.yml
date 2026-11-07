@@ -1,0 +1,61 @@
+name: OnePlus 13 phone RPC source checks
+
+on:
+  push:
+    branches: [oneplus13-platform-handoff-20261026]
+    paths:
+      - .github/workflows/oneplus13-phone-rpc.yml
+      - tools/oneplus13/build-phone-rpc.py
+      - tools/oneplus13/sensor-patches/**
+      - tools/oneplus13/ram-sensor-fileserver.py
+      - tests/test_oneplus13_phone_rpc_builder.py
+      - tests/test_oneplus13_sensor_fileserver.py
+      - tools/oneplus13/ram-rpc-selftest.py
+      - tests/test_oneplus13_rpc_selftest.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oneplus13-phone-rpc-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  rpc:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare native C tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends gcc binutils meson ninja-build patch python3 ca-certificates
+          test "$(uname -m)" = aarch64
+      - name: Check source recipe refusal cases
+        run: python3 -m unittest discover -s tests -p test_oneplus13_phone_rpc_builder.py -v
+      - name: Check bounded reverse-file service controls
+        run: python3 -m unittest discover -s tests -p test_oneplus13_sensor_fileserver.py -v
+      - name: Check synthetic RPC selftest isolation and archive refusal
+        run: python3 -m unittest discover -s tests -p test_oneplus13_rpc_selftest.py -v
+      - name: Build only generic phone RPC binaries and run C sanitizer checks
+        run: python3 tools/oneplus13/build-phone-rpc.py --output out/phone-rpc
+      - name: Preserve bounded source and test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oneplus13-phone-rpc-${{ github.sha }}
+          path: |
+            out/phone-rpc/phone-rpc-arm64.tar.gz
+            out/phone-rpc/phone-rpc-tests-arm64.tar.gz
+            out/phone-rpc/phone-rpc-tests.json
+            out/phone-rpc/verification.json
+            out/phone-rpc/build.log
+            out/phone-rpc/LICENSE-*
+            out/phone-rpc/COPYRIGHT.txt
+            out/phone-rpc/release/meson-logs/testlog.txt
+            out/phone-rpc/sanitized/meson-logs/testlog.txt
+          if-no-files-found: error
+          retention-days: 14

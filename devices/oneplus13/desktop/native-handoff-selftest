@@ -1,0 +1,46 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# QEMU-only data-copy/failure checks. No module loading or helper execution.
+set -eu
+tr '\000' '\n' < /sys/firmware/devicetree/base/compatible | grep -qx linux,dummy-virt
+. /run/oneplus13/native-handoff-lib
+tmp=$(mktemp -d /run/oneplus13/native-handoff-fixture.XXXXXX)
+trap 'rm -rf "$tmp"' EXIT
+src=$tmp/source
+dst=$tmp/target
+profile=lib/firmware/qcom/sm8750/oneplus/dodge/aa569-spr-v1.bin
+mkdir -p "$src/${profile%/*}" "$src/etc" "$src/sbin" "$dst/usr/lib"
+ln -s usr/lib "$dst/lib"
+dd if=/dev/zero of="$src/$profile" bs=176 count=1 2>/dev/null
+printf '#!/bin/sh\nexit 99\n' > "$src/sbin/start-native-display"
+uname -r > "$src/etc/oneplus13-native-candidate"
+{
+    echo ONEPLUS13_NATIVE_HANDOFF_V1
+    uname -r
+    sha256sum "$src/$profile" | cut -d' ' -f1
+    sha256sum "$src/sbin/start-native-display" | cut -d' ' -f1
+} > "$src/etc/oneplus13-native-handoff"
+stage_native_payload "$src" "$dst" "$(uname -r)"
+[ "$(sha256sum "$src/$profile" | cut -d' ' -f1)" = "$(sha256sum "$dst/$profile" | cut -d' ' -f1)" ]
+[ "$(sha256sum "$src/sbin/start-native-display" | cut -d' ' -f1)" = "$(sha256sum "$dst/run/oneplus13/native/start-native-display" | cut -d' ' -f1)" ]
+[ "$(stat -c %a "$dst/run/oneplus13/native/start-native-display")" = 600 ]
+[ "$(stat -c %a "$dst/$profile")" = 600 ]
+[ "$(stat -c %a "$dst/run/oneplus13/native")" = 700 ]
+# Existing destinations cannot be replaced, including symbolic links.
+if stage_native_payload "$src" "$dst" "$(uname -r)"; then exit 1; fi
+mkdir "$tmp/symlink-target"
+ln -s "$tmp/outside" "$tmp/symlink-target/usr"
+if stage_native_payload "$src" "$tmp/symlink-target" "$(uname -r)"; then exit 1; fi
+[ ! -e "$tmp/outside" ]
+mkdir "$tmp/corrupt-target"
+printf x >> "$src/sbin/start-native-display"
+if stage_native_payload "$src" "$tmp/corrupt-target" "$(uname -r)"; then exit 1; fi
+[ -z "$(ls -A "$tmp/corrupt-target")" ]
+rm "$src/etc/oneplus13-native-handoff"
+if stage_native_payload "$src" "$tmp/corrupt-target" "$(uname -r)"; then exit 1; fi
+# Synthetic bytes stayed inside the fixture tree, never in the real root.
+[ ! -e /etc/oneplus13-native-candidate ]
+[ ! -e /lib/firmware/qcom/sm8750/oneplus/dodge/aa569-spr-v1.bin ]
+[ ! -e /run/oneplus13/native ]
+[ ! -d /sys/module/panel_oneplus_aa569 ] && [ ! -d /sys/module/msm ]
+echo ONEPLUS13_NATIVE_HANDOFF_OFFLINE_OK

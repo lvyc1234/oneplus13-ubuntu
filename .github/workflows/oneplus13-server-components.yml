@@ -1,0 +1,68 @@
+name: OnePlus 13 server component builds
+on:
+  workflow_dispatch:
+    inputs:
+      runtime_qemu:
+        description: Optional QEMU kernel diagnostics
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: oneplus13-server-components-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  kernel:
+    runs-on: [self-hosted, Linux, ARM64, oneplus13-arm64]
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: flock /tmp/oneplus13-apt-update.lock sudo apt-get update && flock /tmp/oneplus13-apt.lock sudo apt-get -o DPkg::Lock::Timeout=600 install -y build-essential bc bison flex libssl-dev libelf-dev ccache rsync device-tree-compiler cpio kmod
+      - if: inputs.runtime_qemu
+        run: flock /tmp/oneplus13-apt.lock sudo apt-get -o DPkg::Lock::Timeout=600 install -y qemu-system-arm
+      - uses: actions/cache/restore@v4
+        id: kernel-cache
+        with:
+          path: ~/.cache/ccache
+          key: oneplus13-source-${{ runner.arch }}-${{ hashFiles('devices/oneplus13/**') }}
+          restore-keys: |
+            oneplus13-v1-${{ runner.os }}-${{ runner.arch }}-
+      - run: python3 -m unittest discover -s tests -p 'test_oneplus13*.py' -v
+      - run: taskset -c "$(python3 -c 'import os; print(",".join(map(str, sorted(os.sched_getaffinity(0))[:4])))')" bash tools/oneplus13/source-image.sh kernel
+        env:
+          CCACHE_MAXSIZE: 3G
+      - uses: actions/cache/save@v4
+        if: steps.kernel-cache.outputs.cache-hit != 'true'
+        with:
+          path: ~/.cache/ccache
+          key: ${{ steps.kernel-cache.outputs.cache-primary-key }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: source-kernel-${{ github.sha }}
+          path: out/oneplus13/
+          if-no-files-found: error
+          retention-days: 14
+  mesa:
+    runs-on: [self-hosted, Linux, ARM64, oneplus13-arm64]
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: |
+          flock /tmp/oneplus13-apt-update.lock sudo apt-get update
+          flock /tmp/oneplus13-apt.lock sudo apt-get -o DPkg::Lock::Timeout=600 install -y --no-install-recommends build-essential meson ninja-build pkg-config libdrm-dev libexpat1-dev python3-mako python3-ply python3-yaml bison flex zlib1g-dev libzstd-dev libelf-dev libwayland-dev libwayland-egl-backend-dev wayland-protocols libx11-dev libx11-xcb-dev libxcb-dri2-0-dev libxcb-dri3-dev libxcb-present-dev libxcb-randr0-dev libxcb-sync-dev libxcb-xfixes0-dev libxcb-glx0-dev libxcb-shm0-dev libxshmfence-dev libxxf86vm-dev libxrandr-dev libglvnd-dev glslang-tools python3-packaging python3-pip libvulkan-dev vulkan-tools
+          sudo --preserve-env=http_proxy,https_proxy,HTTP_PROXY,HTTPS_PROXY pip3 install --break-system-packages 'meson==1.9.1'
+      - run: bash tools/oneplus13/source-image.sh mesa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-mesa-${{ github.sha }}
+          path: out/mesa-debs/
+          retention-days: 14
+  ssc:
+    uses: ./.github/workflows/oneplus13-phone-ssc.yml
+    with:
+      use_server: true

@@ -1,0 +1,104 @@
+name: OnePlus 13 camera and speaker offline components
+on:
+  push:
+    branches: [oneplus13-platform-handoff-20261026]
+    paths:
+      - .github/workflows/oneplus13-av-components.yml
+      - tools/oneplus13/camera-draft/**
+      - tools/oneplus13/review-camera-board-map.py
+      - tests/test_oneplus13_camera_board_map.py
+      - docs/oneplus13/STATUS.md
+  workflow_dispatch:
+    inputs:
+      cphy:
+        description: Compile isolated C-PHY framework (no phone register table or activation)
+        type: boolean
+        default: false
+      offline_gates_only:
+        description: Run existing complete offline gates without recompiling components
+        type: boolean
+        default: false
+      phone_cphy:
+        description: Include experimental phone C-PHY MMIO adapter (no enabled board graph)
+        type: boolean
+        default: false
+      compile_only:
+        description: Compile camera objects without running synthetic or unit checks
+        type: boolean
+        default: false
+      infrared:
+        description: Include isolated bounded SPI infrared driver (no enabled board node)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: oneplus13-av-components-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  components:
+    if: ${{ !inputs.offline_gates_only }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare native compiler
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends build-essential bc bison flex libssl-dev libelf-dev patch
+          test "$(uname -m)" = aarch64
+      - name: Compile fixed camera prerequisites and actual amplifier functions
+        env:
+          CPHY: ${{ inputs.cphy }}
+          PHONE_CPHY: ${{ inputs.phone_cphy }}
+          INFRARED: ${{ inputs.infrared }}
+          COMPILE_ONLY: ${{ inputs.compile_only }}
+        run: |
+          args=()
+          if [[ "$PHONE_CPHY" == true ]]; then
+            args+=(--cphy --phone-cphy)
+          elif [[ "$CPHY" == true ]]; then
+            args+=(--cphy)
+          fi
+          if [[ "$INFRARED" == true ]]; then args+=(--infrared); fi
+          if [[ "$COMPILE_ONLY" == true ]]; then args+=(--compile-only); fi
+          python3 tools/oneplus13/camera-draft/build-components.py --output out/av-components "${args[@]}"
+      - name: Run camera board-map contract tests without private FDT
+        if: ${{ !inputs.compile_only }}
+        run: python3 -m unittest discover -s tests -p test_oneplus13_camera_board_map.py -v
+      - name: Preserve component review evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oneplus13-av-components-${{ github.sha }}
+          path: |
+            out/av-components/compile.log
+            out/av-components/verification.json
+            out/av-components/kernel.config
+            out/av-components/infrared-source.json
+            out/av-components/linux/drivers/media/rc/ir-dodge-spi.o
+            out/av-components/linux/arch/arm64/boot/dts/qcom/sm8750-oneplus-dodge.dtb
+            out/av-components/audio-synthetic/verification.json
+            out/av-components/camera-synthetic/verification.json
+            out/av-components/camera-synthetic/*.log
+            out/av-components/phone-cphy-catalog/verification.json
+            out/av-components/phone-cphy-catalog/catalog.h
+            out/av-components/phone-cphy-catalog/phone-sequence.h
+            out/av-components/phone-cphy-catalog/catalog-arm64.o
+            out/av-components/phone-cphy-mmio/verification.json
+            out/av-components/linux/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.o
+            out/av-components/linux/drivers/media/platform/qcom/camss/*.o
+            out/av-components/linux/drivers/media/i2c/s5kjn5.o
+            out/av-components/linux/drivers/phy/qualcomm/phy-qcom-mipi-csi2*.o
+            out/av-components/linux/drivers/i2c/busses/i2c-qcom-cci.o
+            out/av-components/linux/drivers/clk/qcom/camcc-sm8750.o
+            out/av-components/linux/drivers/clk/qcom/cambistmclkcc-sm8750.o
+            out/av-components/linux/sound/soc/codecs/aw88461.o
+            out/av-components/linux/sound/soc/codecs/aw88395/aw88395_lib.o
+          if-no-files-found: error
+          retention-days: 14
+  offline-gates:
+    if: ${{ inputs.offline_gates_only }}
+    uses: ./.github/workflows/oneplus13-complete-gates.yml

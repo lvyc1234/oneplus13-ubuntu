@@ -1,0 +1,101 @@
+From: Nihal Kumar Gupta <nihal.gupta@oss.qualcomm.com>
+Date: Sat, 17 Oct 2026 22:43:10 +0530
+Subject: [PATCH RFC 3/6] phy: qcom: mipi-csi2: Split D-PHY register  settings
+Message-Id: <20261017-cphy_support-v1-3-8b0e1237ce95@oss.qualcomm.com>
+
+The register sequence storage is tied to a single init table. C-PHY
+support needs separate D-PHY and C-PHY sequence selection without
+changing the existing D-PHY programming.
+
+Wrap the existing D-PHY table in a D-PHY settings structure and route
+lane programming through a common register write helper.
+
+Signed-off-by: Nihal Kumar Gupta <nihal.gupta@oss.qualcomm.com>
+---
+ drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c | 28 +++++++++++++++-------
+ drivers/phy/qualcomm/phy-qcom-mipi-csi2.h          |  8 +++++--
+ 2 files changed, 26 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c b/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c
+index 966d79c98f9b21e1a235b8397c4c84b25d869427..79c7fa57d059b29f2f72a0c1208e07115b3fb049 100644
+--- a/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c
++++ b/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c
+@@ -241,14 +241,12 @@ static u8 phy_qcom_mipi_csi2_settle_cnt_calc(s64 link_freq, u32 timer_clk_rate)
+ 	return settle_cnt;
+ }
+ 
+-static void
+-phy_qcom_mipi_csi2_gen2_config_lanes(struct mipi_csi2phy_device *csi2phy,
+-				     u8 settle_cnt)
++static void phy_qcom_mipi_csi2_write_regs(struct mipi_csi2phy_device *csi2phy,
++					  const struct mipi_csi2phy_lane_regs *r,
++					  unsigned int array_size, u8 settle_cnt)
+ {
+-	const struct mipi_csi2phy_device_regs *regs = csi2phy_dev_to_regs(csi2phy);
+-	const struct mipi_csi2phy_lane_regs *r = regs->init_seq;
+-	int i, array_size = regs->lane_array_size;
+ 	u32 val;
++	int i;
+ 
+ 	for (i = 0; i < array_size; i++, r++) {
+ 		switch (r->param_type) {
+@@ -268,6 +266,16 @@ phy_qcom_mipi_csi2_gen2_config_lanes(struct mipi_csi2phy_device *csi2phy,
+ 	}
+ }
+ 
++static void
++phy_qcom_mipi_csi2_gen2_config_lanes(struct mipi_csi2phy_device *csi2phy,
++				     u8 settle_cnt)
++{
++	const struct mipi_csi2phy_device_regs *regs = csi2phy_dev_to_regs(csi2phy);
++
++	phy_qcom_mipi_csi2_write_regs(csi2phy, regs->dphy->dphy_init_seq,
++					 regs->dphy->num_regs, settle_cnt);
++}
++
+ static int phy_qcom_mipi_csi2_lanes_enable(struct mipi_csi2phy_device *csi2phy,
+ 					   struct mipi_csi2phy_stream_cfg *cfg)
+ {
+@@ -369,11 +377,15 @@ static struct mipi_csi2_genpd x1e_genpds[] = {
+ 	{ .name = "mx", .scaled = true },
+ };
+ 
++static const struct mipi_csi2phy_dphy_rate_settings x1e80100_dphy_settings = {
++	.dphy_init_seq = lane_regs_x1e80100,
++	.num_regs = ARRAY_SIZE(lane_regs_x1e80100),
++};
++
+ const struct mipi_csi2phy_soc_cfg mipi_csi2_dphy_4nm_x1e = {
+ 	.ops = &phy_qcom_mipi_csi2_ops_3ph_1_0,
+ 	.reg_info = {
+-		.init_seq = lane_regs_x1e80100,
+-		.lane_array_size = ARRAY_SIZE(lane_regs_x1e80100),
++		.dphy = &x1e80100_dphy_settings,
+ 		.common_regs_offset = 0x1000,
+ 	},
+ 	.supply_names = (const char **)x1e_supplies,
+diff --git a/drivers/phy/qualcomm/phy-qcom-mipi-csi2.h b/drivers/phy/qualcomm/phy-qcom-mipi-csi2.h
+index 7e55ae00737047f2d0384728a9c98780851eec05..528e80109c2f96b8c66d989ac834e30e7b38c732 100644
+--- a/drivers/phy/qualcomm/phy-qcom-mipi-csi2.h
++++ b/drivers/phy/qualcomm/phy-qcom-mipi-csi2.h
+@@ -47,9 +47,13 @@ struct mipi_csi2phy_lane_regs {
+ 	const u32 param_type;
+ };
+ 
++struct mipi_csi2phy_dphy_rate_settings {
++	const struct mipi_csi2phy_lane_regs *dphy_init_seq;
++	unsigned int num_regs;
++};
++
+ struct mipi_csi2phy_device_regs {
+-	const struct mipi_csi2phy_lane_regs *init_seq;
+-	const int lane_array_size;
++	const struct mipi_csi2phy_dphy_rate_settings *dphy;
+ 	const u32 common_regs_offset;
+ };
+ 
+
+-- 
+2.34.1
+
+

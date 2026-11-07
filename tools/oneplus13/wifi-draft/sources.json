@@ -1,0 +1,27 @@
+{
+  "repository": "OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8750",
+  "commit": "d50b305f7da9e14715a25120a4ac7b1a4b8b97c3",
+  "files": {
+    "wmi_unified.h": {
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8750/d50b305f7da9e14715a25120a4ac7b1a4b8b97c3/vendor/qcom/opensource/wlan/fw-api/fw/wmi_unified.h",
+      "bytes": 2167916,
+      "sha256": "27e052df342ccc0624f7ef4cd5a0f78f19ec281ab82fe5fced951f7ace068f5e"
+    },
+    "wmi_tlv_defs.h": {
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8750/d50b305f7da9e14715a25120a4ac7b1a4b8b97c3/vendor/qcom/opensource/wlan/fw-api/fw/wmi_tlv_defs.h",
+      "bytes": 501808,
+      "sha256": "c2eae89bd50c2e35a52dc321adc99ac04191e9245a4c7e31d849ffb9b8bdc48e"
+    },
+    "wmi_unified_sta_param.h": {
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8750/d50b305f7da9e14715a25120a4ac7b1a4b8b97c3/vendor/qcom/opensource/wlan/qca-wifi-host-cmn/wmi/inc/wmi_unified_sta_param.h",
+      "bytes": 13249,
+      "sha256": "eebc9dad8a98b32c5e865d76dc3573a77f2f9e6a6db0b0086393d19810f88f1f"
+    },
+    "wmi_unified_sta_tlv.c": {
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8750/d50b305f7da9e14715a25120a4ac7b1a4b8b97c3/vendor/qcom/opensource/wlan/qca-wifi-host-cmn/wmi/src/wmi_unified_sta_tlv.c",
+      "bytes": 82401,
+      "sha256": "f1bf907ab71d493fbd2c5e144c0dbc0a4f775d826528b9cc2708de51ad688efb"
+    }
+  },
+  "private_inputs_included": false
+}

@@ -1,0 +1,61 @@
+name: OnePlus 13 matching stock firmware
+
+on:
+  push:
+    branches: [oneplus13-bringup]
+    paths:
+      - .github/workflows/oneplus13-stock-firmware.yml
+      - tools/oneplus13/extract-stock-firmware.py
+      - docs/oneplus13/stock-firmware.json
+      - tests/test_oneplus13_stock.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oneplus13-stock-firmware-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  extract:
+    # The first Azure westus2 ARM job reached the gate but CDN TLS timed out.
+    # Test a different hosted network; the extractor checks TLS/ranges first.
+    runs-on: macos-15
+    timeout-minutes: 95
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check bounded range proxy without external network
+        run: python3 -m unittest discover -s tests -p test_oneplus13_stock.py -v
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.0'
+          cache: false
+      - name: Build pinned external payload tool
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          git init out/oneplus13-payload-tool
+          git -C out/oneplus13-payload-tool remote add origin https://github.com/xishang0128/payload-dumper-go.git
+          git -C out/oneplus13-payload-tool fetch --depth 1 origin 4cc6ef94039470d659e4199c67f76d8962280023
+          git -C out/oneplus13-payload-tool checkout --detach FETCH_HEAD
+          test "$(git -C out/oneplus13-payload-tool rev-parse HEAD)" = 4cc6ef94039470d659e4199c67f76d8962280023
+          cd out/oneplus13-payload-tool
+          go build -mod=readonly -trimpath -o ../payload-dumper ./cmd/payload-dumper
+      - name: Install read-only filesystem extraction tools
+        run: |
+          brew install erofs-utils mtools
+      - name: Extract and independently verify matching generic firmware
+        run: |
+          python3 tools/oneplus13/extract-stock-firmware.py \
+            --dumper out/payload-dumper --work out/oneplus13-stock-work \
+            --output out/oneplus13-stock-firmware
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: oneplus13-matching-stock-firmware-${{ github.sha }}
+          path: out/oneplus13-stock-firmware/
+          retention-days: 14
+          if-no-files-found: error

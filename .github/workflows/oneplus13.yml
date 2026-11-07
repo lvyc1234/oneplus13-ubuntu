@@ -1,0 +1,164 @@
+name: OnePlus 13 offline build
+
+on:
+  push:
+    branches: [oneplus13-bringup]
+    paths:
+      - .github/workflows/oneplus13.yml
+      - devices/oneplus13/**
+      - tools/oneplus13/**
+      - tests/test_oneplus13.py
+      - tests/s3910_report_test.c
+  workflow_dispatch:
+    inputs:
+      wifi-transport-only:
+        description: Include dormant phone SAR transport in the full offline kernel; no RF policy or firmware
+        type: boolean
+        default: false
+      pll-audit-only:
+        description: Run only the immutable PLL/PHY source audit
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oneplus13-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  pll-audit:
+    if: ${{ inputs.pll-audit-only == true }}
+    uses: ./.github/workflows/oneplus13-pll-audit.yml
+  kernel:
+    if: ${{ inputs.pll-audit-only != true }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          # The platform-review branch is a thin public overlay. Reuse the
+          # already published complete phone baseline for this selected build.
+          ref: ${{ inputs.wifi-transport-only == true && '1f5c1128d42a62244bef9974e58cfe07adf29f7d' || github.sha }}
+      - uses: actions/checkout@v4
+        if: ${{ inputs.wifi-transport-only == true }}
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          path: .wifi-overlay
+      - name: Bind reviewed WiFi overlay onto published phone baseline
+        if: ${{ inputs.wifi-transport-only == true }}
+        run: |
+          test "$(git rev-parse HEAD)" = 1f5c1128d42a62244bef9974e58cfe07adf29f7d
+          test "$(git -C .wifi-overlay rev-parse HEAD)" = "$GITHUB_SHA"
+          cp -a .wifi-overlay/tools/oneplus13/wifi-draft tools/oneplus13/
+          cp .wifi-overlay/tools/oneplus13/build.sh tools/oneplus13/build.sh
+          mkdir -p out/oneplus13
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib
+          root=pathlib.Path('.')
+          files=[root/'tools/oneplus13/build.sh',*sorted((root/'tools/oneplus13/wifi-draft').glob('*'))]
+          proof={'scope':'PUBLIC_PINNED_PHONE_BASE_PLUS_REVIEWED_WIFI_OVERLAY',
+                 'phone_base_commit':'1f5c1128d42a62244bef9974e58cfe07adf29f7d',
+                 'wifi_overlay_commit':os.environ['GITHUB_SHA'],'phone_operations':0,
+                 'files':{str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in files if p.is_file()}}
+          (root/'out/oneplus13/wifi-source-binding.json').write_text(json.dumps(proof,indent=2)+'\n')
+          PY
+      - name: Install build dependencies
+        timeout-minutes: 10
+        run: |
+          # The Azure HTTP mirror was measured downloading small cross-toolchain
+          # packages for minutes. Use Ubuntu's HTTPS archive in this disposable VM.
+          for file in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
+            if [ -f "$file" ]; then
+              sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$file"
+            fi
+          done
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential bc bison flex libssl-dev libelf-dev ccache rsync device-tree-compiler cpio kmod
+      - name: Check phone tooling
+        run: |
+          python3 -m unittest discover -s tests -p 'test_oneplus13*.py' -v
+          gcc -Wall -Wextra -Werror -fsanitize=address,undefined tests/s3910_report_test.c -o /tmp/s3910-report-test
+          /tmp/s3910-report-test
+      - name: Restore compiler cache
+        id: compiler-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/ccache
+          key: oneplus13-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('devices/oneplus13/**') }}
+          restore-keys: oneplus13-v1-${{ runner.os }}-${{ runner.arch }}-
+      - name: Build pinned phone candidate
+        id: build
+        env:
+          CCACHE_MAXSIZE: 3G
+          PHONE_WIFI_TRANSPORT_DRAFT: ${{ inputs.wifi-transport-only == true && '1' || '0' }}
+        run: bash tools/oneplus13/build.sh
+      - name: Save compiler cache even when packaging fails
+        if: always() && !cancelled() && steps.compiler-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/ccache
+          key: oneplus13-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('devices/oneplus13/**') }}
+      - name: Upload small device-tree review inputs
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oneplus13-dtb-review-${{ github.sha }}
+          path: |
+            out/oneplus13-kbuild/arch/arm64/boot/dts/qcom/sm8750-oneplus-dodge*.dtb
+            out/oneplus13-kbuild/.config
+            out/oneplus13/kernel.config
+            out/oneplus13/aa569-dsc.json
+            out/oneplus13/aa569-dsc.h
+            out/oneplus13/display-conversion-verification.json
+            out/oneplus13/command-clock-verification.json
+            out/oneplus13/command-budget-verification.json
+            out/oneplus13/panel-component-verification.json
+            out/oneplus13/dsi-batch-verification.json
+            out/oneplus13/fixed-phy-verification.json
+            out/oneplus13/dpu-buffer-verification.json
+            out/oneplus13/spr-profile-verification.json
+            out/oneplus13/spr-runtime-verification.json
+            out/oneplus13/native-dtb-verification.json
+            out/oneplus13/native-identity-verification.json
+            out/oneplus13/wlan-dtb-verification.json
+            out/oneplus13/gpu-dtb-verification.json
+            out/oneplus13/wifi-driver-integration.json
+            out/oneplus13/wifi-source-binding.json
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Install QEMU inspection tools
+        timeout-minutes: 10
+        run: sudo apt-get install -y --no-install-recommends qemu-system-arm
+      - name: QEMU userspace smoke test
+        run: python3 tools/oneplus13/verify.py --artifacts out/oneplus13 --qemu
+      - name: Publish build evidence in job summary
+        if: always()
+        run: |
+          echo '## OnePlus 13 offline candidate' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Build/QEMU results do not establish hardware support. No device was flashed.' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f out/oneplus13/verification.json ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat out/oneplus13/verification.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: oneplus13-offline-${{ github.sha }}
+          path: out/oneplus13/
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: oneplus13-failure-logs-${{ github.run_id }}
+          path: |
+            out/oneplus13-kbuild/*.log
+            out/oneplus13/*.json
+            out/oneplus13/qemu.log
+          if-no-files-found: ignore
+          retention-days: 7

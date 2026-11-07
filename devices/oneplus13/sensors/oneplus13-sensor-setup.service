@@ -1,0 +1,15 @@
+[Unit]
+Description=Install reviewed OnePlus 13 SSC sensor inputs in RAM
+ConditionKernelCommandLine=oneplus13.desktop=1
+ConditionPathExists=/run/oneplus13/ram-session
+After=local-fs.target systemd-remount-fs.service
+Before=oneplus13-sensor-fileserver.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/oneplus13-ram-sensor-desktop.py setup
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_CHOWN CAP_FOWNER
+NoNewPrivileges=no
+ProtectHome=yes
+PrivateTmp=yes

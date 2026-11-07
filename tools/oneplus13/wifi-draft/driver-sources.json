@@ -1,0 +1,10 @@
+{
+  "kernel_repository": "yzddmr6/linux-sm8750-erhai",
+  "kernel_pin": "7a81d184e3098624d4342d8f4eff5e23674bcc9f",
+  "files": {
+    "drivers/net/wireless/ath/ath12k/Makefile": "6214be01157b4530a61d81b0fa85c941fcde6c01fce3868a918db86922457430",
+    "drivers/net/wireless/ath/ath12k/wmi.c": "03357f03dc0016efb75d87b6ab61df031145c90c02e840415d544489ee0313d3",
+    "drivers/net/wireless/ath/ath12k/wmi.h": "7bf09c86125f02975eb9187f72f5a7ec73da6761dad8e704944ab37fdb511594",
+    "drivers/net/wireless/ath/ath12k/core.c": "835ef6344620520fb5a64a920d2a8cadc0a167f73a8586e8bd0156e6b9a40a72"
+  }
+}

@@ -1,0 +1,98 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# Executed only in an explicitly selected experimental RAM initramfs.
+set -eu
+set -o pipefail
+sha=; bytes=; desktop=0; qemu=0; qemu_http=0
+for arg in $(cat /proc/cmdline); do
+    case "$arg" in
+        oneplus13.desktop=1) desktop=1 ;;
+        oneplus13.rootfs.sha256=*) sha=${arg#*=} ;;
+        oneplus13.rootfs.bytes=*) bytes=${arg#*=} ;;
+        oneplus13.desktop.qemu=1) qemu=1 ;;
+        oneplus13.desktop.qemu-http=1) qemu_http=1 ;;
+    esac
+done
+echo ONEPLUS13_RAM_ROOT_VALIDATING_INPUT
+[ "$desktop" = 1 ]
+case "$sha" in ''|*[!0-9a-f]*) exit 1 ;; esac
+[ "${#sha}" = 64 ]
+case "$bytes" in ''|*[!0-9]*) exit 1 ;; esac
+[ "${#bytes}" -le 10 ] && [ "$bytes" -ge 1048576 ] && [ "$bytes" -le 3221225472 ]
+available=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+[ "$((available * 1024))" -ge "$((bytes * 2 + 2147483648))" ]
+mkdir -p /run/oneplus13 /run/rootfs.ro /run/rootfs.rw /run/rootfs.wk /newroot
+if [ "$qemu" = 1 ]; then
+    # The block input is an emulator-only test fixture, never a phone root path.
+    tr '\000' '\n' < /sys/firmware/devicetree/base/compatible | grep -qx linux,dummy-virt
+fi
+if [ "$qemu_http" = 1 ]; then
+    [ "$qemu" = 1 ]
+    ip link set dev eth0 down
+    ip link set dev eth0 name usb0
+    ip address add 172.16.13.1/24 dev usb0
+    ip link set dev usb0 up
+fi
+if [ "$qemu" = 1 ] && [ "$qemu_http" = 0 ]; then
+    [ "$(blockdev --getro /dev/vda)" = 1 ]
+    [ "$(blockdev --getsize64 /dev/vda)" = "$bytes" ]
+    image=/dev/vda
+else
+    [ "$(cat /sys/class/net/usb0/address)" = 02:13:00:00:00:01 ]
+    image=/run/rootfs.squashfs
+    [ ! -e "$image" ]
+    chunk=67108864
+    count=$(((bytes + chunk - 1) / chunk))
+    index=0
+    : > "$image"
+    while [ "$index" -lt "$count" ]; do
+        expected=$((bytes - index * chunk))
+        [ "$expected" -le "$chunk" ] || expected=$chunk
+        part=$(printf 'part%04d' "$index")
+        echo "ONEPLUS13_RAM_ROOT_FETCH $part $expected"
+        # Bound both elapsed time and received bytes, including a hostile server.
+        timeout -k 2 60 wget -q -T 15 -O - \
+            "http://172.16.13.2:8000/oneplus13-rootfs.parts/$part" |
+            head -c "$((expected + 1))" > /run/rootfs.part
+        [ "$(stat -c %s /run/rootfs.part)" = "$expected" ]
+        cat /run/rootfs.part >> "$image"
+        rm /run/rootfs.part
+        index=$((index + 1))
+    done
+    [ "$(stat -c %s "$image")" = "$bytes" ]
+fi
+echo ONEPLUS13_RAM_ROOT_VERIFYING_SHA256
+[ "$(sha256sum "$image" | cut -d' ' -f1)" = "$sha" ]
+mount -t squashfs -o ro,loop "$image" /run/rootfs.ro
+mount -t overlay overlay -o lowerdir=/run/rootfs.ro,upperdir=/run/rootfs.rw,workdir=/run/rootfs.wk /newroot
+[ "$(cat /newroot/usr/lib/oneplus13-desktop/version)" = 1 ]
+[ "$(cat /newroot/usr/lib/oneplus13-desktop/kernel-release)" = "$(uname -r)" ]
+[ -x /newroot/usr/lib/systemd/systemd ]
+if grep -v '^[[:space:]]*#' /newroot/etc/fstab | grep -q '[^[:space:]]'; then
+    echo 'Unexpected persistent filesystem entry'; exit 1
+fi
+for dir in dev proc sys run tmp mnt/oneplus13-ram; do mkdir -p "/newroot/$dir"; done
+mount -t devtmpfs devtmpfs /newroot/dev
+mkdir -p /newroot/dev/pts
+mount -t devpts devpts /newroot/dev/pts
+mount -t proc proc /newroot/proc
+mount -t sysfs -o nosuid,nodev,noexec sysfs /newroot/sys
+mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /newroot/run
+mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /newroot/tmp
+mount --bind /run /newroot/mnt/oneplus13-ram
+mkdir -p /newroot/run/oneplus13 /newroot/run/evidence
+cp -a /run/evidence/. /newroot/run/evidence/
+touch /newroot/run/oneplus13/ram-session
+if [ "$qemu" = 1 ]; then
+    /bin/oneplus13-qemu-install /newroot
+else
+    mkdir -p /newroot/sys/kernel/config
+    mount --bind /sys/kernel/config /newroot/sys/kernel/config
+    /bin/oneplus13-physical-platform /newroot/sys
+fi
+# Carry the complete, hash-bound private payload into RAM only. The helper is
+# preserved as non-executable data; this does not enable desktop activation.
+. /bin/oneplus13-native-handoff
+stage_native_payload / /newroot "$(uname -r)"
+chroot /newroot /usr/libexec/oneplus13-runtime-guard --once
+echo ONEPLUS13_RAM_ROOT_READY > /run/evidence/rootfs.txt

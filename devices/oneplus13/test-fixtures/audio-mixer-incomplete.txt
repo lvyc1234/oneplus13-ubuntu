@@ -1,0 +1,51 @@
+numid=97,iface=MIXER,name='SpkrLeft DAC Switch'
+  ; type=BOOLEAN,access=rw------,values=1
+  : values=off
+numid=105,iface=MIXER,name='SpkrRight DAC Switch'
+  ; type=BOOLEAN,access=rw------,values=1
+  : values=off
+numid=267,iface=MIXER,name='WSA RX0 MUX'
+  ; type=ENUMERATED,access=rw------,values=1,items=3
+  ; Item #0 'ZERO'
+  ; Item #1 'AIF1_PB'
+  ; Item #2 'AIF_MIX1_PB'
+  : values=0
+numid=268,iface=MIXER,name='WSA RX1 MUX'
+  ; type=ENUMERATED,access=rw------,values=1,items=3
+  ; Item #0 'ZERO'
+  ; Item #1 'AIF1_PB'
+  ; Item #2 'AIF_MIX1_PB'
+  : values=0
+numid=211,iface=MIXER,name='WSA_CODEC_DMA_RX_0 Audio Mixer MultiMedia1'
+  ; type=BOOLEAN,access=rw------,values=2
+  : values=off,off
+numid=272,iface=MIXER,name='WSA_RX0 INP0'
+  ; type=ENUMERATED,access=rw------,values=1,items=12
+  ; Item #0 'ZERO'
+  ; Item #1 'RX0'
+  ; Item #2 'RX1'
+  ; Item #3 'RX_MIX0'
+  ; Item #4 'RX_MIX1'
+  ; Item #5 'RX4'
+  ; Item #6 'RX5'
+  ; Item #7 'RX6'
+  ; Item #8 'RX7'
+  ; Item #9 'RX8'
+  ; Item #10 'DEC0'
+  ; Item #11 'DEC1'
+  : values=0
+numid=276,iface=MIXER,name='WSA_RX1 INP0'
+  ; type=ENUMERATED,access=rw------,values=1,items=12
+  ; Item #0 'ZERO'
+  ; Item #1 'RX0'
+  ; Item #2 'RX1'
+  ; Item #3 'RX_MIX0'
+  ; Item #4 'RX_MIX1'
+  ; Item #5 'RX4'
+  ; Item #6 'RX5'
+  ; Item #7 'RX6'
+  ; Item #8 'RX7'
+  ; Item #9 'RX8'
+  ; Item #10 'DEC0'
+  ; Item #11 'DEC1'
+  : values=0

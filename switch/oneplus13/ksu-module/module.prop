@@ -1,0 +1,6 @@
+id=op13_dualboot
+name=OnePlus 13 Dual Boot
+version=v2.4
+versionCode=6
+author=Codex
+description=Restart Android A into Ubuntu B and expose shared media as owner internal storage.

@@ -1,0 +1,79 @@
+name: OnePlus 13 downloaded artifact verification
+
+on:
+  push:
+    branches: [oneplus13-bringup]
+    paths: [.github/workflows/oneplus13-verify.yml]
+  workflow_dispatch:
+    inputs:
+      rootfs_run_id:
+        description: Successful Ubuntu GNOME workflow run ID (optional)
+        required: false
+        default: ''
+        type: string
+      kernel_run_id:
+        description: Successful kernel workflow run ID (optional)
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  rootfs:
+    if: ${{ inputs.rootfs_run_id != '' }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.rootfs_run_id }}
+          pattern: oneplus13-ubuntu-26.04.1-gnome-*
+          path: out/downloaded-rootfs
+          merge-multiple: true
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends squashfs-tools
+          python3 tools/oneplus13/verify-rootfs.py out/downloaded-rootfs --report out/reports/rootfs-verification.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oneplus13-rootfs-independent-verification
+          path: out/reports/rootfs-verification.json
+          if-no-files-found: error
+          retention-days: 14
+  kernel:
+    if: ${{ inputs.kernel_run_id != '' }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.kernel_run_id }}
+          pattern: oneplus13-offline-*
+          path: out/downloaded-kernel
+          merge-multiple: true
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends device-tree-compiler qemu-system-arm
+          cd out/downloaded-kernel
+          sha256sum --check SHA256SUMS
+          cd ../..
+          python3 tools/oneplus13/verify.py --artifacts out/downloaded-kernel --qemu
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oneplus13-kernel-independent-verification
+          path: |
+            out/downloaded-kernel/verification.json
+            out/downloaded-kernel/qemu.log
+          if-no-files-found: error
+          retention-days: 14

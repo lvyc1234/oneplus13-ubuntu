@@ -1,0 +1,29 @@
+{
+  "upstream_commit": "9762c0994e2b5acd672be2ddbda680fd61f1cad6",
+  "files": [
+    {
+      "source": "https://github.com/yzddmr6/onepluspad-2pro-mainline/blob/9762c0994e2b5acd672be2ddbda680fd61f1cad6/packaging/erhai-display-power/gsd-backlight-compat.c",
+      "original_sha256": "362111babd082656f98946c41c271dc69c95ecfe6e632c374c511ec82c6cd52a",
+      "destination": "gsd-backlight-compat.c",
+      "license": "GPL-2.0-only",
+      "adaptation": "Phone panel compatible/name and RAM guard; binary DBV0/1433 backlight; phone power key blank-only, no automatic system suspend"
+    },
+    {
+      "source": "https://github.com/yzddmr6/onepluspad-2pro-mainline/blob/9762c0994e2b5acd672be2ddbda680fd61f1cad6/packaging/erhai-display-power/tree/usr/sbin/erhai-display-power",
+      "original_sha256": "6f0493965865bbe902f06660a9afdd703d8f686a459ade0eb1870a9ea88397aa",
+      "destination": "display-power.py",
+      "license": "GPL-2.0-only",
+      "adaptation": "Phone panel compatible/name and RAM guard; binary DBV0/1433 backlight; phone power key blank-only, no automatic system suspend"
+    },
+    {
+      "source": "https://github.com/yzddmr6/onepluspad-2pro-mainline/blob/9762c0994e2b5acd672be2ddbda680fd61f1cad6/packaging/erhai-device-support/tree/usr/sbin/erhai-power-key",
+      "original_sha256": "4787e851c6e06ad9868e74a347b44281efe9375c40599e7d6240c53bd907a1c4",
+      "destination": "power-key.py",
+      "license": "GPL-2.0-only",
+      "adaptation": "Phone panel compatible/name and RAM guard; binary DBV0/1433 backlight; phone power key blank-only, no automatic system suspend"
+    }
+  ],
+  "hardware_tested": false,
+  "system_suspend_enabled": false,
+  "scope": "PHONE_COMPATIBILITY_BLANK_ONLY_NOT_NATIVE_DPMS_OR_SUSPEND_QUALIFICATION"
+}

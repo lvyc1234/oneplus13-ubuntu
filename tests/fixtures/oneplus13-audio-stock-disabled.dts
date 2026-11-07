@@ -1,0 +1,10 @@
+/dts-v1/;
+/* Synthetic enablement control, no factory data or measured board wiring. */
+/ {
+    stock-wsa {
+        status = "disabled";
+        speaker { compatible = "qcom,wsa884x"; };
+    };
+    aw-left { compatible = "awinic,aw882xx_smartpa"; };
+    aw-right { compatible = "awinic,aw882xx_smartpa"; };
+};

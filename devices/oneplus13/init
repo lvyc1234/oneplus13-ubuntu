@@ -1,0 +1,105 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# RAM diagnostic environment. It never mounts Android or flashes a partition.
+export PATH=/bin:/sbin
+# Arm recovery before the first mount. PID 1 exits on a critical setup failure,
+# making the kernel panic timer the second recovery path instead of an unbounded shell.
+(
+  sleep 300
+  echo 'RAM diagnostic deadline reached; rebooting to the installed OS'
+  reboot -f
+) &
+mount -t devtmpfs devtmpfs /dev || exit 1
+mount -t proc proc /proc || exit 1
+mount -t sysfs sysfs /sys || exit 1
+mount -t tmpfs tmpfs /run || exit 1
+mount -t tmpfs tmpfs /tmp || exit 1
+mkdir -p /dev/pts /sys/kernel/config /run/evidence
+mount -t devpts devpts /dev/pts
+mount -t configfs configfs /sys/kernel/config
+echo 'ONEPLUS13_RAM_INIT_STARTED'
+# A deadline is armed before peripheral initialization; kernel panic has its own timer.
+case " $(cat /proc/cmdline) " in
+  *' oneplus13.smoke=1 '*) smoke=1 ;;
+  *) smoke=0 ;;
+esac
+# This runs continuously: later-arriving UFS disks are covered as well.
+protect_storage() {
+  for disk in /sys/class/block/*; do
+    [ -e "$disk" ] || continue
+    name=${disk##*/}
+    case "$name" in loop*|ram*|zram*) continue ;; esac
+    [ -e "/dev/$name" ] || continue
+    blockdev --setro "/dev/$name" || return 1
+    [ "$(blockdev --getro "/dev/$name")" = 1 ] || return 1
+  done
+}
+protect_storage || { echo 'Cannot protect storage'; reboot -f; }
+(
+  while sleep 1; do
+    protect_storage || { echo 'Storage protection failed'; reboot -f; }
+  done
+) &
+uname -a > /run/evidence/uname.txt
+cat /proc/cmdline > /run/evidence/cmdline.txt
+cat /proc/meminfo > /run/evidence/meminfo.txt
+cat /proc/partitions > /run/evidence/partitions.txt
+if [ -r /sys/firmware/devicetree/base/compatible ]; then
+  tr '\000' '\n' < /sys/firmware/devicetree/base/compatible > /run/evidence/compatible.txt
+fi
+if [ -r /sys/firmware/devicetree/base/model ]; then
+  tr '\000' '\n' < /sys/firmware/devicetree/base/model > /run/evidence/model.txt
+fi
+dmesg > /run/evidence/dmesg.txt
+if [ "$smoke" = 1 ]; then
+  echo 'ONEPLUS13_QEMU_INIT_OK'
+  poweroff -f
+  while :; do sleep 1; done
+fi
+# Composite USB NCM + serial console. No USB mass-storage function is created.
+g=/sys/kernel/config/usb_gadget/oneplus13
+mkdir -p "$g"
+echo 0x1d6b > "$g/idVendor"
+echo 0x0104 > "$g/idProduct"
+echo 0x0200 > "$g/bcdUSB"
+mkdir -p "$g/strings/0x409"
+echo 'offline-development' > "$g/strings/0x409/serialnumber"
+echo 'OnePlus 13 Linux development' > "$g/strings/0x409/manufacturer"
+echo 'RAM diagnostics NCM and ACM' > "$g/strings/0x409/product"
+mkdir -p "$g/configs/c.1/strings/0x409"
+echo 'NCM + ACM' > "$g/configs/c.1/strings/0x409/configuration"
+echo 250 > "$g/configs/c.1/MaxPower"
+mkdir -p "$g/functions/ncm.usb0" "$g/functions/acm.usb0"
+echo 02:13:00:00:00:01 > "$g/functions/ncm.usb0/dev_addr"
+echo 02:13:00:00:00:02 > "$g/functions/ncm.usb0/host_addr"
+ln -s "$g/functions/ncm.usb0" "$g/configs/c.1/"
+ln -s "$g/functions/acm.usb0" "$g/configs/c.1/"
+udc=
+i=0
+while [ "$i" -lt 30 ]; do
+  set -- /sys/class/udc/*
+  if [ -e "$1" ] && [ "$#" = 1 ]; then udc=${1##*/}; break; fi
+  i=$((i + 1)); sleep 1
+done
+if [ -n "$udc" ]; then
+  echo "$udc" > "$g/UDC"
+  ip link set usb0 up
+  ip address add 172.16.13.1/24 dev usb0
+  printf 'start 172.16.13.2\nend 172.16.13.2\ninterface usb0\noption subnet 255.255.255.0\nlease_file /run/udhcpd.leases\n' > /run/udhcpd.conf
+  udhcpd /run/udhcpd.conf
+  httpd -p 8080 -h /run/evidence
+  telnetd -b 172.16.13.1:23 -l /bin/sh
+  (while :; do setsid cttyhack sh < /dev/ttyGS0 > /dev/ttyGS0 2>&1; sleep 1; done) &
+  echo 'ONEPLUS13_USB_READY 172.16.13.1 (development root shell; trusted USB only)'
+else
+  echo 'NO_UDC: automatic reboot remains armed'
+fi
+while :; do
+  dmesg > /run/evidence/dmesg.txt
+  for disk in /sys/class/block/*; do
+    [ -e "$disk/ro" ] || continue
+    printf '%s ' "${disk##*/}"
+    cat "$disk/ro"
+  done > /run/evidence/block-readonly.txt
+  sleep 5
+done

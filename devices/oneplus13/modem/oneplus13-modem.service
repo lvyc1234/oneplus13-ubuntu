@@ -1,0 +1,17 @@
+[Unit]
+Description=OnePlus 13 SM8750 modem and GNSS remoteproc
+After=systemd-modules-load.service
+Before=ModemManager.service
+Wants=ModemManager.service
+# RAM hardware probes start MPSS explicitly after the desktop and QRTR stack
+# are ready. Persistent installations have no RAM marker and auto-start here.
+ConditionPathExists=!/run/oneplus13/ram-session
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=120s
+ExecStart=/bin/sh -c 'set -eu; rp=; for path in /sys/class/remoteproc/remoteproc*; do [ "$(cat "$path/name")" = modem ] && rp="$path"; done; [ -n "$rp" ]; have_ipcrtr() { for item in /sys/bus/rpmsg/devices/*IPCRTR*; do [ -e "$item" ] && return 0; done; return 1; }; for attempt in 1 2; do state="$(cat "$rp/state")"; if [ "$state" = running ] && have_ipcrtr; then exit 0; fi; if [ "$state" != offline ]; then echo stop > "$rp/state"; for i in $(seq 1 250); do [ "$(cat "$rp/state")" = offline ] && break; sleep 0.1; done; [ "$(cat "$rp/state")" = offline ]; fi; echo start > "$rp/state"; for i in $(seq 1 500); do [ "$(cat "$rp/state")" = running ] && break; [ "$(cat "$rp/state")" = crashed ] && break; sleep 0.1; done; state="$(cat "$rp/state")"; if [ "$state" = running ]; then for i in $(seq 1 300); do have_ipcrtr && exit 0; [ "$(cat "$rp/state")" = running ] || break; sleep 0.1; done; fi; [ "$(cat "$rp/state")" = offline ] || { echo stop > "$rp/state"; for i in $(seq 1 250); do [ "$(cat "$rp/state")" = offline ] && break; sleep 0.1; done; }; done; exit 1'
+
+[Install]
+WantedBy=multi-user.target

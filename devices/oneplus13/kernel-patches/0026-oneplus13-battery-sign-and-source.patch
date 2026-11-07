@@ -1,0 +1,104 @@
+--- a/drivers/power/supply/qcom_battmgr.c
++++ b/drivers/power/supply/qcom_battmgr.c
+@@ -57,6 +57,8 @@
+ #define QCOM_BATTMGR_QUIRK_NO_BATT_POWER_NOW		BIT(1)
+ /* The charge control opcode and properties mean something else */
+ #define QCOM_BATTMGR_QUIRK_NO_CHARGE_CONTROL		BIT(2)
++/* The phone firmware reports a stale battery status. */
++#define QCOM_BATTMGR_QUIRK_STATUS_FROM_CURRENT		BIT(7)
+ 
+ #define BATTMGR_BAT_STATUS		0x1
+ 
+@@ -568,6 +570,52 @@
+ 	return ret;
+ }
+ 
++/* Read the phone's source and current in one serialized firmware exchange. */
++static int qcom_battmgr_phone_status(struct qcom_battmgr *battmgr,
++				    union power_supply_propval *val)
++{
++	bool online;
++	s32 current_now;
++	int ret;
++
++	mutex_lock(&battmgr->lock);
++	ret = qcom_battmgr_request_property(battmgr, BATTMGR_USB_PROPERTY_GET,
++					   USB_ONLINE, 0);
++	if (ret)
++		goto out;
++	online = battmgr->usb.online;
++	if (!online) {
++		ret = qcom_battmgr_request_property(battmgr, BATTMGR_WLS_PROPERTY_GET,
++						   WLS_ONLINE, 0);
++		if (ret)
++			goto out;
++		online = battmgr->wireless.online;
++	}
++	if (!online) {
++		val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
++		goto out;
++	}
++	ret = qcom_battmgr_request_property(battmgr, BATTMGR_BAT_PROPERTY_GET,
++					   BATT_CURR_NOW, 0);
++	if (ret)
++		goto out;
++	/* This quirk is paired with BATT_CURRENT_INVERTED on this phone. */
++	current_now = battmgr->status.current_now;
++	if (current_now < 0) {
++		val->intval = POWER_SUPPLY_STATUS_CHARGING;
++		goto out;
++	}
++	ret = qcom_battmgr_request_property(battmgr, BATTMGR_BAT_PROPERTY_GET,
++					   BATT_CAPACITY, 0);
++	if (ret)
++		goto out;
++	val->intval = battmgr->status.percent == 100 ? POWER_SUPPLY_STATUS_FULL :
++		     POWER_SUPPLY_STATUS_NOT_CHARGING;
++out:
++	mutex_unlock(&battmgr->lock);
++	return ret;
++}
++
+ static int qcom_battmgr_bat_get_property(struct power_supply *psy,
+ 					 enum power_supply_property psp,
+ 					 union power_supply_propval *val)
+@@ -589,6 +637,8 @@
+ 
+ 	switch (psp) {
+ 	case POWER_SUPPLY_PROP_STATUS:
++		if (battmgr->quirks & QCOM_BATTMGR_QUIRK_STATUS_FROM_CURRENT)
++			return qcom_battmgr_phone_status(battmgr, val);
+ 		val->intval = battmgr->status.status;
+ 		break;
+ 	case POWER_SUPPLY_PROP_CHARGE_TYPE:
+@@ -2003,8 +2053,16 @@
+ 	ret = qcom_battmgr_request(battmgr, &req, sizeof(req));
+ 	WRITE_ONCE(battmgr->op13_otg_auto_notifications_ready, !ret);
+ 	mutex_unlock(&battmgr->lock);
+-	if (ret)
++	if (ret) {
+ 		dev_err(battmgr->dev, "failed to request power notifications\n");
++		return;
++	}
++	/* Publish already-connected sources after the firmware becomes ready. */
++	if (battmgr->quirks & QCOM_BATTMGR_QUIRK_STATUS_FROM_CURRENT) {
++		power_supply_changed(battmgr->bat_psy);
++		power_supply_changed(battmgr->usb_psy);
++		power_supply_changed(battmgr->wls_psy);
++	}
+ }
+ 
+ static void qcom_battmgr_pdr_notify(void *priv, int state)
+@@ -2043,6 +2101,12 @@
+  * values with a different meaning.
+  */
+ static const struct of_device_id qcom_battmgr_of_quirks[] = {
++	{
++		.compatible = "qcom,sm8750-pmic-glink",
++		.data = (void *)(QCOM_BATTMGR_QUIRK_BATT_CURRENT_INVERTED |
++				 QCOM_BATTMGR_QUIRK_NO_BATT_POWER_NOW |
++				 QCOM_BATTMGR_QUIRK_STATUS_FROM_CURRENT),
++	},
+ 	{
+ 		.compatible = "oneplus,pad2pro-pmic-glink",
+ 		.data = (void *)(QCOM_BATTMGR_QUIRK_BATT_CURRENT_INVERTED |

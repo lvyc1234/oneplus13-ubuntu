@@ -1,0 +1,62 @@
+#!/system/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+set -euf
+
+module=${0%/*}
+hal=android.hardware.boot.IBootControl/default
+lock=/dev/op13-slot-switch.lock
+
+die() { printf '%s\n' "$*" >&2; exit 1; }
+
+# Android 16 Boot Control stable AIDL v1. The first word is the
+# exception code, followed by the integer for read operations.
+rpc() {
+    reply=$(/system/bin/service call "$hal" "$@") || return 1
+    case "$reply" in 'Result: Parcel('*) ;; *) return 1 ;; esac
+    set -- ${reply#'Result: Parcel('}
+    [ "${1-}" = 00000000 ] || return 1
+    printf '%s\n' "${2-}"
+}
+
+[ "$(id -u)" = 0 ] || die 'Root is required'
+[ "$(getprop ro.boot.slot_suffix)" = _a ] || die 'Android must be on slot A'
+[ "$(getprop sys.boot_completed)" = 1 ] || die 'Android boot is still in progress'
+case "${1-}" in
+    check|to-linux) command=$1 ;;
+    to-fastboot)
+        sync
+        exec /system/bin/svc power reboot bootloader ;;
+    *) die 'Use check, to-linux or to-fastboot' ;;
+esac
+[ "$(rpc 16777215)" = 00000001 ] || die 'Unsupported Boot Control HAL'
+[ "$(rpc 3)" = 00000002 ] || die 'Expected two slots'
+[ "$(rpc 2)" = 00000000 ] || die 'Boot Control reports an unexpected current slot'
+[ "$(rpc 1)" = 00000000 ] || die 'Another slot has already been selected'
+[ "$(rpc 4)" = 00000000 ] || die 'An OTA snapshot is present'
+[ "$(rpc 6 i32 1)" = 00000001 ] || die 'Linux B is marked unbootable'
+sha256sum -c "$module/boot-b.sha256" || die 'Linux boot image differs from the approved image'
+echo 'OnePlus 13 slot A is ready to switch to Ubuntu B'
+[ "$command" = to-linux ] || exit 0
+
+mkdir "$lock" || die 'A slot switch is already in progress'
+restore=0
+cleanup() {
+    if [ "$restore" = 1 ] && [ "$(rpc 1)" = 00000001 ]; then
+        rpc 9 i32 0 >/dev/null || true
+    fi
+    rmdir "$lock"
+}
+trap cleanup EXIT
+[ "$(rpc 1)" = 00000000 ] || die 'Active slot changed during preflight'
+[ "$(rpc 4)" = 00000000 ] || die 'OTA state changed during preflight'
+sync
+restore=1
+rpc 9 i32 1 >/dev/null || die 'Boot Control could not select slot B'
+[ "$(rpc 1)" = 00000001 ] || die 'Slot B selection did not persist'
+[ "$(rpc 4)" = 00000000 ] || die 'OTA state changed after slot selection'
+echo 'Ubuntu B selected. Restarting.'
+restore=0
+if ! /system/bin/svc power reboot; then
+    restore=1
+    die 'Android could not request a reboot'
+fi

@@ -1,0 +1,507 @@
+{
+  "format": "ONEPLUS13_QUALIFIED_DATA_V1",
+  "compatible_public_native_dtb_sha256": "2175a04be947625f718aed1f76e7a0c614b1e1c00c9b11e8dfd9d647bc1c4936",
+  "scope": "RUN90_QUALIFIED_DATA_OWNER_AUTHORIZED_PUBLICATION_NO_CREDENTIALS_OR_DEVICE_IDENTIFIERS",
+  "files": {
+    "boot-geometry.json": {
+      "sha256": "ce02dc8b77c4210ec448bfe520d9f8d262a5ef82ed875b6b0176ed230eb68dc3",
+      "bytes": 102
+    },
+    "calibrated.dtb": {
+      "sha256": "2a2ca49e0002ae4a80c0f35aad00a2efd282be6b640a684abb01ac72866f6b91",
+      "bytes": 258048
+    },
+    "display-profile.bin": {
+      "sha256": "1306430f675f897c504284661014c609de0ceae89d6c957ded2d4768ae207b80",
+      "bytes": 176
+    },
+    "firmware/ath12k/WCN7860/hw2.0/amss.bin": {
+      "sha256": "bbdfeec01b7de20e89c7e6906d7ea3fd89b896862de29396696a93dbb59fc77a",
+      "bytes": 6971456
+    },
+    "firmware/ath12k/WCN7860/hw2.0/aux_ucode.bin": {
+      "sha256": "2b2eef47107e1c61e1f809371c7413867cf748fb57a2887cc4ff4d386b680fad",
+      "bytes": 61440
+    },
+    "firmware/ath12k/WCN7860/hw2.0/bdwlan.elf": {
+      "sha256": "68175a7eeffe9ebe32cfb22676e3ac4c250eb3dcf35d4abe18fee45440e08f76",
+      "bytes": 125288
+    },
+    "firmware/ath12k/WCN7860/hw2.0/board-2.bin": {
+      "sha256": "9cce38db012867432566dc0deea6d647c2ae2ffa367d3fc90b300e517b748381",
+      "bytes": 149948
+    },
+    "firmware/ath12k/WCN7860/hw2.0/m3.bin": {
+      "sha256": "063840b7509e5da791afa6c2905b191297a401c06d39774b82330949c1c8f438",
+      "bytes": 290816
+    },
+    "firmware/ath12k/WCN7860/hw2.0/qdss.cfg": {
+      "sha256": "4683d8683437a11172723dc5820801aaaf5eb082336875a7664142582cc90cbb",
+      "bytes": 6245
+    },
+    "firmware/ath12k/WCN7860/hw2.0/regdb.bin": {
+      "sha256": "c774af903051e7af845435352fdb2ec6158835c4c95fd9323be22658971ffc6f",
+      "bytes": 24278
+    },
+    "firmware/qca/gngbtfw20.mbn": {
+      "sha256": "84e210e2ba386a9bad91a2d9dd5d1f4e2559b385f226b463dcfa4d8159f5937f",
+      "bytes": 260616
+    },
+    "firmware/qca/gngbtnv20.bin": {
+      "sha256": "a4586f5205dc3752f7d52fd6b7106b02ffe877774e5633018ac48be99d5a079b",
+      "bytes": 13415
+    },
+    "firmware/qcom/gen80000_aqe.fw": {
+      "sha256": "f04cb97e1e629b9003a26c5670b8f7e5b7bfeca95d35b2abd581fd8672efed20",
+      "bytes": 25340
+    },
+    "firmware/qcom/gen80000_gmu.bin": {
+      "sha256": "1ad8175e6cd01ea76c64d20b83600038c52dd29844b48d57b11b769b038863a5",
+      "bytes": 88896
+    },
+    "firmware/qcom/gen80000_sqe.fw": {
+      "sha256": "9c8f009bea112d7c06dd2ccb67e889999459e53b92f0f4859f5ea0db067ad6b5",
+      "bytes": 111892
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b00": {
+      "sha256": "15ae7d32d5bc069d4646bb93b07f417d50ee51ad861a8251ff5fb36043904bde",
+      "bytes": 1812
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b01": {
+      "sha256": "ee7924d4e54c1e76dff49fe658f0a4b8badb07894bdba2e715ac362ff2dc8f6f",
+      "bytes": 20896
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b02": {
+      "sha256": "fa5dbd02e70aca99099ae6dc7b0c12731fcf6de2d2531f5ba4eba88e660942e3",
+      "bytes": 38924
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b03": {
+      "sha256": "6b60acee23c56396486d043d8fe283b3c5001abec470d68da7efc9c89fd33e54",
+      "bytes": 110723
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b04": {
+      "sha256": "75fb5b59d51113770ea95d01659589e7826df48cb2dea0dd46d55b3a3a5f90a0",
+      "bytes": 32756
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b05": {
+      "sha256": "0d4eabda3f29ba18f11648c63e6fb8c5c9572ae07fc50b4f27e5b5dab450a981",
+      "bytes": 84180
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b06": {
+      "sha256": "c9d1f620d793fd9a7885a156a07f039309658e4f9ac778ac16b2b1d92cc09d1c",
+      "bytes": 82
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b07": {
+      "sha256": "47bb5ae39b5e2550898d4f23a5aca3214aba74adbcde7b4a90f553b028d66dff",
+      "bytes": 192512
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b08": {
+      "sha256": "051eb4806e182424f093cb723f38b023f96b35ca29387bda3afa536bff16e154",
+      "bytes": 368
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b09": {
+      "sha256": "a3446b252604c139f7f1ccf20fa96197e4025b49aa59252ea0c1a3a46cf6c230",
+      "bytes": 9236
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b10": {
+      "sha256": "577d90e0a00411ccacd7f128530f4660d03d1e4f755b9cf9c59039d0db490218",
+      "bytes": 3117680
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b11": {
+      "sha256": "349ad1966d3570ce516340394f0ceb935b48170065219d2e0ed39ec7cfeeee75",
+      "bytes": 266100
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b12": {
+      "sha256": "048cb22769ae424fee74b87367433363a589c96514eca2f6f9c97602302c6b22",
+      "bytes": 2584
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b13": {
+      "sha256": "dc9b5da0663857370f60fa47ed8bcd1616fb13b21b145b1352b684f2fdb637bc",
+      "bytes": 62148
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b14": {
+      "sha256": "1fb37eb8f3cd0a2c381c45ca98012d8450cce0a80425ff60e1dab68993334d4d",
+      "bytes": 7112
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b15": {
+      "sha256": "cb741f83c8d0507bb88826e5b5efd5da59befd511fb51258abe33f8de72f8467",
+      "bytes": 255112
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b16": {
+      "sha256": "bf43099dc2bc6d70215d3dcfe60299939cd8563cf0f847f33b994eeaea454726",
+      "bytes": 163980
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b17": {
+      "sha256": "43de825f383aee61d04868bfb5418a0592077cc992863e56d1afe3e3e2fa798d",
+      "bytes": 454656
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b18": {
+      "sha256": "1db276562b88cb634a75b847f203e969f8d397baef6dfb5d20910b20ad3fbef0",
+      "bytes": 3073508
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b19": {
+      "sha256": "9bf33522b26f6a48db822254905f4144429cd005a6c8a45458eef62c70440620",
+      "bytes": 30576
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b20": {
+      "sha256": "0f4fdca6caa09f5797bea00b6cfb1096812b2123c207c7e997aa157c7eaaf894",
+      "bytes": 272
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b21": {
+      "sha256": "7ae5886bbb94aaa13780df09868a1fa6c33d0c0d6e6a0e53c74fff418cfa537e",
+      "bytes": 452724
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b22": {
+      "sha256": "3e3f3170c1e9ecbe125080bbca4f2c7e37f8422e94be52c2b7f18e187669cacb",
+      "bytes": 622592
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b23": {
+      "sha256": "4613ada80d7f2eafa021994141ef3f95204e9a000ad73793e0b8c578a3065b30",
+      "bytes": 3729304
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b24": {
+      "sha256": "f1a370ea2c81ce8c68f49f2c8bd8e714f5daa35ee640ed3fd21bcc87d5109f44",
+      "bytes": 6197252
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b26": {
+      "sha256": "436cdafe2ba672d46d7661c1376a7cffc99b0e85c69ed2e7ad857c1ab3a7d283",
+      "bytes": 592
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b27": {
+      "sha256": "96640a2cf71c104f901179fd263af2dee3183b04306457e25bf5591f942cdd47",
+      "bytes": 15876
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b28": {
+      "sha256": "c0da3b4e46434234a4d4a322515ea04ba5a1da3f909d57740666f594519a749a",
+      "bytes": 39144
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b29": {
+      "sha256": "8a9a2fab0616f6250ff8a46fb2a1511d04005dc9fcc7b2f6f499ffd16040199f",
+      "bytes": 1032684
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b30": {
+      "sha256": "19b2d3dba26c07ae7c7411afcebf53ff34e8d75d6fdeafb7660e032ea1a5ea17",
+      "bytes": 212800
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b31": {
+      "sha256": "2f4df9691111c67acb74b2b7131a7d07ffbc23b36692b0f0bdd8c1376b0659c8",
+      "bytes": 174156
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b32": {
+      "sha256": "319522eaabf4a63ce9958c50451d71d30e94505a8441f9df2f3cb216aae4514e",
+      "bytes": 170792
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b33": {
+      "sha256": "f983300f2bae27ae3de35e1ef9993b64b10dfd474939880e9fece682e48cf6fa",
+      "bytes": 16796
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b34": {
+      "sha256": "30a143d9a482aa6e8fb48d2fb7061a5fd16ff66a34ac1737255bcdb1c13a1d28",
+      "bytes": 191496
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b35": {
+      "sha256": "4840a0226449fbe56bae3049ba5bc365c237a14d9f98620bca4da963f3f2cc67",
+      "bytes": 91264
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b36": {
+      "sha256": "2a46e9dd50a3b4b52c986833dbfe55428401c1c3435f93ac2c84e6263a021d74",
+      "bytes": 70752
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b37": {
+      "sha256": "0b690096b8425e58cf3f617c72e86178d83584e1bab14e9ee818f597ec0cae3a",
+      "bytes": 298068
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b38": {
+      "sha256": "69ca3292d86fa3c41ba5226c7067085e8092ff1b4115d65dc8d845ca069410cb",
+      "bytes": 229376
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b39": {
+      "sha256": "86b3f8c9474798731786e061213e8625462156f46b13d70fc3bf3a042a76e21b",
+      "bytes": 7661468
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b40": {
+      "sha256": "641371c123448df9735803924bf113ad3f05c75358a6ad870e33cb23ba49bd69",
+      "bytes": 2039816
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b41": {
+      "sha256": "271c5783def587733c57edd67523fd9890a97b12fd2ee0ad4237226454bb6b85",
+      "bytes": 20
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b42": {
+      "sha256": "f4ae3bed5030e1de5ae576d1d74b23e8eaed455e7bdc23fbb897a26d3c3ebd4b",
+      "bytes": 89268
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b43": {
+      "sha256": "9a83e3c6c3f035ec7c0b139d89887994f248fa4ebc47256d7a31848611d160bf",
+      "bytes": 28672
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b44": {
+      "sha256": "ba9b71ad84886e9550f250ea9db6ab0b051dc5ba5e8e484a11d26189e181325f",
+      "bytes": 33256
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b45": {
+      "sha256": "e77706727de433cb52e5fe2a98499fa62d7a60c3fb7b66212689ab829dd4f241",
+      "bytes": 524252
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b46": {
+      "sha256": "aaae7f4c029f21d22eb12121f65933d02c5c7ba95b9784f21a546792a9d997f1",
+      "bytes": 10052
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b47": {
+      "sha256": "c1edf14231edc1906dce0f9ca44708b2e58736104252cceed031342dab178f89",
+      "bytes": 237256
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b48": {
+      "sha256": "ae0f21836478f4b9d831c40704cff73bb35e6a730a82dee306d8d0a7ca333516",
+      "bytes": 974848
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b49": {
+      "sha256": "375c22700e27414af6fc3d78c80766937e32da8249edcd2fb3adc6aa7554b8ef",
+      "bytes": 87127
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b50": {
+      "sha256": "11802ea5068f9c74180006d98014b16d932b89c028b0e2f85f1847b650ab1e21",
+      "bytes": 958464
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b51": {
+      "sha256": "7eb727ecd97eb46bcbf9d25b076444821d5c11fae0d5b752ce1c3b54bfefc881",
+      "bytes": 53248
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b52": {
+      "sha256": "6f45e49c51b632761df1b49c5dd0bfacf0c7f00ba0aebba6aebcfe1c7ebaeb70",
+      "bytes": 6490248
+    },
+    "firmware/qcom/sm8750/erhai/adsp.b54": {
+      "sha256": "65d905f96b7628ac0762a31cb4b02b4af186588bcd07845c9b713f7cd9e5c870",
+      "bytes": 6392
+    },
+    "firmware/qcom/sm8750/erhai/adsp.mdt": {
+      "sha256": "54987e449f59eeafa7cffafa1837110f1b03f4f23fe77d31f60bacbb256320c7",
+      "bytes": 8204
+    },
+    "firmware/qcom/sm8750/erhai/adsp_dtb.b00": {
+      "sha256": "35890c629637501aa43d3f22572def470d8b888188c17be91a8f345a608c050f",
+      "bytes": 148
+    },
+    "firmware/qcom/sm8750/erhai/adsp_dtb.b01": {
+      "sha256": "2eab17071fc86e186516a2352cb6c37a8e4cd4fc2312e581461336def79af6b8",
+      "bytes": 159284
+    },
+    "firmware/qcom/sm8750/erhai/adsp_dtb.b02": {
+      "sha256": "176a1fcdb209545aeef118c3d003450f97ba5d93f2951f2df79e54c807014847",
+      "bytes": 3896
+    },
+    "firmware/qcom/sm8750/erhai/adsp_dtb.mdt": {
+      "sha256": "8a2709f037e15b6434988ebcb0f14579c4925a9a62ebb423933ba26af183f773",
+      "bytes": 4044
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/gen80000_zap.mbn": {
+      "sha256": "a694df58b82343e58e52745da31c3b88e569a2eeae5e7755e0d9bf14d93f5046",
+      "bytes": 12088
+    },
+    "sensors/reviewed-runtime-data.json": {
+      "bytes": 1166001,
+      "sha256": "3af3939c859d7f6cd115214c11a80a38170ab7daa5b10de0dbcd4711e2413b2f"
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/vpu35_4v.mbn": {
+      "sha256": "e1b2cb6de867893537fe6a1ffba312c2a2949402ca9892d393e2f40de255690a",
+      "bytes": 2417352
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b00": {
+      "sha256": "c4aac89fb2c626a818d59c8c84cfa28cb686eb8b803b67c1f7b0ab689b42a460",
+      "bytes": 1428
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b01": {
+      "sha256": "680885c2f45fa7553eb26adab3b4cd5bdd1b03871bc0838853435453f51011dd",
+      "bytes": 3992
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b02": {
+      "sha256": "3dfa279fb0d05c13f3f9799edf96c34c69cd810aff31acdfae795422296d8612",
+      "bytes": 1880
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b03": {
+      "sha256": "486fbdf30376cb5feac40a138abc02d1d18845802b7512568b99aa61a40f2282",
+      "bytes": 11584
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b04": {
+      "sha256": "669386dab9b47bbbef26637c6f65538be4a7ec25f4f3ed222237f98e4b534a0e",
+      "bytes": 46748
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b05": {
+      "sha256": "88d1196d17cde02ca3ea42adfb28bbe055d6f2effa7bdf904e2f54eff734d80d",
+      "bytes": 233568
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b06": {
+      "sha256": "094bf74bfbf3c12c945a2eca30d6ba230054a80d7dc63d4f2862872848e640eb",
+      "bytes": 21568
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b07": {
+      "sha256": "c68b6f2ff495c6c3f2dba3e7fedeb204aeda75d5d8af4969f119998c2aa3dde0",
+      "bytes": 13936
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b08": {
+      "sha256": "63bb54fc4e8098816e92c949ef4bc0ecdff106458f766d1adf17adcfc4779155",
+      "bytes": 106919
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b09": {
+      "sha256": "a6f72407afba21f3a135c746e13a62832925485698b973827c04bb5af61c08f8",
+      "bytes": 34012
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b10": {
+      "sha256": "8bd36fd4badc548ff94b6058894cb53baf69246dfb38cb6360969570148a2ad0",
+      "bytes": 9332
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b11": {
+      "sha256": "fd77446bb7920bb0eb2a68ee2da1013d1f5030b06c85c46b80a49821c299b082",
+      "bytes": 35020
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b12": {
+      "sha256": "02204c089d1552e04d51d05f870e21b8b61988cb663aaba128d2d02d0f544686",
+      "bytes": 40960
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b13": {
+      "sha256": "51d0ab405cb3fe5cd447a2a13e7d71601af9c18d48417368275ff30030f9ff30",
+      "bytes": 135168
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b14": {
+      "sha256": "c3a7f6e6170ac4232230d5a1c8c3eed90782bca3ff514944bd8d3f7a30838cb7",
+      "bytes": 56784
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b15": {
+      "sha256": "27792ad20ad7c5672f1bc4568656faa454960391253c5ada97036b11f984f37b",
+      "bytes": 3604480
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b16": {
+      "sha256": "b0414d733a4a018ea2554bdac3c3fb36e91e046b805203f9452cfac997ee8643",
+      "bytes": 65536
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b17": {
+      "sha256": "eb01c54e8738488204dae1a407720ff9587ee7ec10c626af37dec37d122bcb33",
+      "bytes": 53248
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b18": {
+      "sha256": "4a010198348a25092bc5fdd3d2fd1b0d6f6780410b4e5998c63ba92340e45d5f",
+      "bytes": 3646864
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b19": {
+      "sha256": "3536aafc5bcde5fd63ce5e3d04b99209bbb1691753b9c5b72fd91293f7b52d62",
+      "bytes": 212992
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b20": {
+      "sha256": "4bdaf88972b7a51d269c06b8160c4fd2f410695e3a2621b17ac3f6ac61184ac8",
+      "bytes": 269984
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b21": {
+      "sha256": "53680c7719064ca20d4592b149b28e1b5897f9f924641f288750f09f39bcd3d9",
+      "bytes": 212992
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b22": {
+      "sha256": "89c612cd96a5476d16b2520c44802e86e5f76e63576f3c4c589dad8051ce4f73",
+      "bytes": 1067992
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b23": {
+      "sha256": "9c8cc6f45238dcab5ff3130379f9a2f4b2cf423e8a4107bf256ec6daf3f3bf78",
+      "bytes": 9066
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b24": {
+      "sha256": "b32af0a87202ceb3a3f8780d9b72f8917ebef2d138f8edddbc710e88799ca5ad",
+      "bytes": 1974670
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b25": {
+      "sha256": "8d3d4130fc02d6ec03b1249663c974d96428da518edd0434b595714ac8791ca0",
+      "bytes": 2805597
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b26": {
+      "sha256": "f2d731961cf638f39641f1a2168d53cdc512aba03cd20e743e4e2f3d288f1904",
+      "bytes": 2628998
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b27": {
+      "sha256": "c840d4e61ff2c20e3b3718b16f54a2cd7bd4006320e56a06f5497a5eee95c970",
+      "bytes": 6260389
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b28": {
+      "sha256": "12b25adb73c327898a7bcaac81521f3f89d746ef7eef6e3549f0e5916d22c4c7",
+      "bytes": 107840
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b29": {
+      "sha256": "42871a8a0729ed683323218017c6198f11e615a0361b7a4cec0111c5f3768d42",
+      "bytes": 48537664
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b30": {
+      "sha256": "f0800a38708b534e5a468ecb7219d2309da83f09a58f47a62493df7247e520d7",
+      "bytes": 1547021
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b31": {
+      "sha256": "1f41947bce8b2b8ca7d7a1f84f6fd676bb638b08504900e9c1a1cf1cf9987e78",
+      "bytes": 9000
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b32": {
+      "sha256": "4ffdfc1b415c54649962d3ea1f38f21a0d09af29efb561dc64ba03254adc6133",
+      "bytes": 391744
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b33": {
+      "sha256": "ce8128654571b61fc0314bf0fe446a80edb6f6a5a9008e7a2d36be452d9ac481",
+      "bytes": 131072
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b34": {
+      "sha256": "8300074c402380a0a57856802504c5194f1572a67f05daf390f6d7cbe391242a",
+      "bytes": 1032
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b35": {
+      "sha256": "7c55476f290814001c422f3aded4263a4723603d9fa48a798929468703ff3356",
+      "bytes": 4096
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b36": {
+      "sha256": "155c772d001d71bfb9eee89303ffa9eeb9d64c3630efa74c93d12e2895d4fd6d",
+      "bytes": 307200
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b37": {
+      "sha256": "0537bbc32bbfb5039b652e7e219c4d1b559a5d8cd33f7a5309d97757171d071f",
+      "bytes": 51108
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b38": {
+      "sha256": "631244ff4cb1ed972fb7b150f832b4d92a0ad5d248e7e579f2faacf3cba31341",
+      "bytes": 24984
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b39": {
+      "sha256": "bcb9f3472444ff3bda9f2fe8f75a38e97e5a23f05369fe0cece1dd1499ff57d8",
+      "bytes": 21696
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b40": {
+      "sha256": "efa9f639c7a9526b8800a027a4f4601ea335d8b2498e55f9e85b6782fa33851b",
+      "bytes": 25156
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.b42": {
+      "sha256": "08913dad66e4fb86e65e739c5926493048be16c457399587de66c6d2eb36318e",
+      "bytes": 7588
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem.mdt": {
+      "sha256": "3532d866017aba57a64a759b920e18b1769ae007e767479abdf22409b5bfd97a",
+      "bytes": 9016
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem_dtb.b00": {
+      "sha256": "95b5ae65665727a2ea14c168e7aa5a3f67349ae79e2a7c7625150fa05340ae2b",
+      "bytes": 148
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem_dtb.b01": {
+      "sha256": "eba812c74a501a9061f572dedfd00f0d455d016fd79149de374400d7749fc1f3",
+      "bytes": 114224
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem_dtb.b02": {
+      "sha256": "6ace82c97ccd030d6be93c5f29151fd233c9f771180200e478f87610dd2d7d1b",
+      "bytes": 5248
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modem_dtb.mdt": {
+      "sha256": "eb70c591104f05bdfec354ec55efd91391597a908fc000a8e38e465d557dcfb2",
+      "bytes": 5396
+    },
+    "firmware/qcom/sm8750/oneplus/dodge/modemr.jsn": {
+      "sha256": "07138bd0e249fa43db4eeb1a4516037db3bfe4bb88285e8c36f594be2b2a4b43",
+      "bytes": 710
+    }
+  },
+  "removed_fields": [
+    "/chosen/bootargs"
+  ],
+  "firmware_executables_not_linux_build_artifacts": true
+}

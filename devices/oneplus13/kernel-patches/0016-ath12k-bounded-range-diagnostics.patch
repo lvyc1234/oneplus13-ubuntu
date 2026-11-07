@@ -1,0 +1,58 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH] wifi: ath12k: retain bounded numeric range lifecycle diagnostics
+
+No SSID, address, sensor UID or payload bytes are printed.
+At most 32 request/event rows per radio per RAM boot.
+
+diff --git a/drivers/net/wireless/ath/ath12k/core.h b/drivers/net/wireless/ath/ath12k/core.h
+index 2cd9315..e406935 100644
+--- a/drivers/net/wireless/ath/ath12k/core.h
++++ b/drivers/net/wireless/ath/ath12k/core.h
+@@ -641,6 +641,7 @@ struct ath12k {
+ 		enum ath12k_scan_state state;
+ 		bool is_roc;
+ 		bool range_tx_paused;
++		atomic_t range_trace_count;
+ 		int roc_freq;
+ 		bool roc_notify;
+ 		bool finish_queued;
+diff --git a/drivers/net/wireless/ath/ath12k/mac.c b/drivers/net/wireless/ath/ath12k/mac.c
+index a03bc4c..8aeae3f 100644
+--- a/drivers/net/wireless/ath/ath12k/mac.c
++++ b/drivers/net/wireless/ath/ath12k/mac.c
+@@ -5369,6 +5369,13 @@ static int ath12k_mac_scan_range_start(struct ath12k *ar)
+ 
+ 	ar->scan.range_next = next + n;
+ 
++	/* Bounded numeric diagnostics: no SSID, address or payload bytes. */
++	if (atomic_inc_return(&ar->scan.range_trace_count) <= 32)
++		ath12k_info(ar->ab, "phone range request next=%u count=%u first=%u last=%u split=%u associated=%u\n",
++			    next, n, part->chan_list[0], part->chan_list[n - 1],
++			    ar->scan.range_split_freq, ar->scan.arvif->is_up);
++
++
+ 	/* Firmware needs home-channel rest between associated batches. */
+ 	if (next && ar->scan.arvif->is_up)
+ 		msleep(arg->min_rest_time);
+diff --git a/drivers/net/wireless/ath/ath12k/wmi.c b/drivers/net/wireless/ath/ath12k/wmi.c
+index 98f0a79..2743261 100644
+--- a/drivers/net/wireless/ath/ath12k/wmi.c
++++ b/drivers/net/wireless/ath/ath12k/wmi.c
+@@ -7488,6 +7488,17 @@ static void ath12k_scan_event(struct ath12k_base *ab, struct sk_buff *skb)
+ 		   le32_to_cpu(scan_ev.vdev_id),
+ 		   ath12k_scan_state_str(ar->scan.state), ar->scan.state);
+ 
++	if (ar->scan.range_req &&
++	    (le32_to_cpu(scan_ev.event_type) == WMI_SCAN_EVENT_STARTED ||
++	     le32_to_cpu(scan_ev.event_type) == WMI_SCAN_EVENT_COMPLETED ||
++	     le32_to_cpu(scan_ev.event_type) == WMI_SCAN_EVENT_START_FAILED ||
++	     le32_to_cpu(scan_ev.event_type) == WMI_SCAN_EVENT_DEQUEUED) &&
++	    atomic_inc_return(&ar->scan.range_trace_count) <= 32)
++		ath12k_info(ab, "phone range event type=%u reason=%u freq=%u state=%u next=%u\n",
++			    le32_to_cpu(scan_ev.event_type), le32_to_cpu(scan_ev.reason),
++			    le32_to_cpu(scan_ev.channel_freq), ar->scan.state,
++			    ar->scan.range_next);
++
+ 	switch (le32_to_cpu(scan_ev.event_type)) {
+ 	case WMI_SCAN_EVENT_STARTED:
+ 		ath12k_wmi_event_scan_started(ar);

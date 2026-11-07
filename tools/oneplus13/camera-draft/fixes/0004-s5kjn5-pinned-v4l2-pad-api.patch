@@ -1,0 +1,27 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH] media: s5kjn5: use the pinned kernel pad callback API
+
+The original v6 driver targets next-20260925. The phone's fixed
+7a81d184e309 kernel uses the preceding three-argument pad callbacks.
+Remove the unused client-info parameter from set_fmt/get_selection so
+both callbacks match the actual v4l2_subdev_pad_ops definitions. Keep
+the public sensor mode/register tables and all runtime behavior unchanged.
+
+--- a/drivers/media/i2c/s5kjn5.c
++++ b/drivers/media/i2c/s5kjn5.c
+@@ -2673,7 +2673,6 @@
+ }
+ 
+ static int s5kjn5_set_fmt(struct v4l2_subdev *sd,
+-			  const struct v4l2_subdev_client_info *ci,
+ 			  struct v4l2_subdev_state *state,
+ 			  struct v4l2_subdev_format *fmt)
+ {
+@@ -2689,7 +2688,6 @@
+ }
+ 
+ static int s5kjn5_get_selection(struct v4l2_subdev *sd,
+-				const struct v4l2_subdev_client_info *ci,
+ 				struct v4l2_subdev_state *state,
+ 				struct v4l2_subdev_selection *sel)
+ {

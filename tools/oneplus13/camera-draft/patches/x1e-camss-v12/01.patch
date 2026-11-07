@@ -1,0 +1,97 @@
+Add optional PHY handle definitions. This will allow for supporting both
+legacy PHY definitions as well as supporting the optional new handle based
+approach.
+
+Drop the legacy high-level 0p8 and 1p2 supplies as required, each PHY has
+its own individual rails. The old binding is still valid but with
+individual nodes we define the rails in the CSIPHY sub-nodes.
+
+Signed-off-by: Bryan O'Donoghue <bryan.odonoghue@linaro.org>
+---
+ .../bindings/media/qcom,x1e80100-camss.yaml        | 33 ++++++++++++++++++++--
+ 1 file changed, 31 insertions(+), 2 deletions(-)
+
+diff --git a/Documentation/devicetree/bindings/media/qcom,x1e80100-camss.yaml b/Documentation/devicetree/bindings/media/qcom,x1e80100-camss.yaml
+index 2d1662ef522b7..c17b9757b2c86 100644
+--- a/Documentation/devicetree/bindings/media/qcom,x1e80100-camss.yaml
++++ b/Documentation/devicetree/bindings/media/qcom,x1e80100-camss.yaml
+@@ -39,6 +39,14 @@ properties:
+       - const: vfe_lite0
+       - const: vfe_lite1
+ 
++  '#address-cells':
++    const: 2
++
++  '#size-cells':
++    const: 2
++
++  ranges: true
++
+   clocks:
+     maxItems: 29
+ 
+@@ -126,6 +134,16 @@ properties:
+     description:
+       1.2V supply to a PHY.
+ 
++  phys:
++    maxItems: 4
++
++  phy-names:
++    items:
++      - const: csiphy0
++      - const: csiphy1
++      - const: csiphy2
++      - const: csiphy4
++
+   ports:
+     $ref: /schemas/graph.yaml#/properties/ports
+ 
+@@ -158,6 +176,14 @@ properties:
+             required:
+               - data-lanes
+ 
++patternProperties:
++  "^phy@[0-9a-f]+$":
++    $ref: /schemas/phy/qcom,x1e80100-csi2-phy.yaml
++    unevaluatedProperties: false
++
++  "^opp-table(-.*)?$":
++    type: object
++
+ required:
+   - compatible
+   - reg
+@@ -171,8 +197,6 @@ required:
+   - iommus
+   - power-domains
+   - power-domain-names
+-  - vdd-csiphy-0p8-supply
+-  - vdd-csiphy-1p2-supply
+   - ports
+ 
+ additionalProperties: false
+@@ -184,6 +208,7 @@ examples:
+     #include <dt-bindings/clock/qcom,x1e80100-camcc.h>
+     #include <dt-bindings/interconnect/qcom,icc.h>
+     #include <dt-bindings/interconnect/qcom,x1e80100-rpmh.h>
++    #include <dt-bindings/phy/phy.h>
+     #include <dt-bindings/power/qcom-rpmpd.h>
+ 
+     soc {
+@@ -229,6 +254,10 @@ examples:
+                         "vfe_lite0",
+                         "vfe_lite1";
+ 
++            #address-cells = <2>;
++            #size-cells = <2>;
++            ranges;
++
+             clocks = <&camcc CAM_CC_CAMNOC_AXI_NRT_CLK>,
+                      <&camcc CAM_CC_CAMNOC_AXI_RT_CLK>,
+                      <&camcc CAM_CC_CORE_AHB_CLK>,
+
+-- 
+2.54.0
+
+

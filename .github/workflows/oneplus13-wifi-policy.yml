@@ -1,0 +1,74 @@
+name: OnePlus 13 phone WiFi policy protocol
+on:
+  push:
+    branches: [oneplus13-platform-handoff-20261026]
+    paths:
+      - .github/workflows/oneplus13-wifi-policy.yml
+      - tools/oneplus13/wifi-draft/**
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: oneplus13-wifi-policy-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  wifi-policy:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build and exercise actual codec with vendor sender oracle
+        run: |
+          test "$(uname -m)" = aarch64
+          gcc --version
+          python3 tools/oneplus13/wifi-draft/check.py --output out/wifi-policy
+      - name: Exercise actual driver code with synthetic responses
+        run: python3 tools/oneplus13/wifi-draft/check-driver.py --output out/wifi-driver-tests --references out/wifi-policy/references
+      - name: Preserve public offline evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oneplus13-wifi-policy-${{ github.sha }}
+          path: |
+            out/wifi-policy/verification.json
+            out/wifi-policy/build.log
+            out/wifi-policy/vendor-oracle.h
+            out/wifi-policy/references
+            out/wifi-driver-tests/verification.json
+            out/wifi-driver-tests/build.log
+          if-no-files-found: error
+          retention-days: 14
+  wifi-driver-compile:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare native compiler
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends build-essential bc bison flex libssl-dev libelf-dev
+          test "$(uname -m)" = aarch64
+      - name: Compile exact-kernel dormant phone SAR integration
+        run: python3 tools/oneplus13/wifi-draft/build-driver.py --output out/wifi-driver
+      - name: Preserve public driver compilation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oneplus13-wifi-driver-${{ github.sha }}
+          path: |
+            out/wifi-driver/compile.log
+            out/wifi-driver/verification.json
+            out/wifi-driver/integration.json
+            out/wifi-driver/kernel.config
+            out/wifi-driver/linux/drivers/net/wireless/ath/ath12k/phone-sar.o
+            out/wifi-driver/linux/drivers/net/wireless/ath/ath12k/sar-wire.o
+            out/wifi-driver/linux/drivers/net/wireless/ath/ath12k/wmi.o
+            out/wifi-driver/linux/drivers/net/wireless/ath/ath12k/core.o
+            out/wifi-driver/linux/drivers/net/wireless/ath/ath12k/ath12k.o
+            out/wifi-driver/linux/drivers/net/wireless/ath/ath12k/wifi7/ath12k_wifi7.o
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,345 @@
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c
+@@ -654,6 +654,33 @@
+ 	return NULL;
+ }
+ 
++bool dpu_encoder_spr_quiescent(struct drm_encoder *drm_enc)
++{
++	struct dpu_encoder_virt *enc = to_dpu_encoder_virt(drm_enc);
++
++	if (READ_ONCE(enc->frame_busy_mask[0]) ||
++	    atomic_read(&enc->frame_done_timeout_cnt))
++		return false;
++	return !READ_ONCE(enc->enabled) ||
++		(enc->disp_info.intf_type == INTF_DSI && enc->disp_info.is_cmd_mode);
++}
++
++bool dpu_encoder_aa569_format(struct drm_encoder *drm_enc)
++{
++	struct dpu_encoder_virt *enc = to_dpu_encoder_virt(drm_enc);
++	struct drm_dsc_config *dsc;
++
++	if (enc->disp_info.intf_type != INTF_DSI || !enc->disp_info.is_cmd_mode ||
++	    enc->disp_info.num_of_h_tiles != 1 || enc->disp_info.h_tile_instance[0] != 0)
++		return false;
++	dsc = dpu_encoder_get_dsc_config(drm_enc);
++	return dsc && dsc->native_422 && !dsc->native_420 && !dsc->convert_rgb &&
++		dsc->dsc_version_major == 1 && dsc->dsc_version_minor == 2 &&
++		dsc->bits_per_component == 10 && dsc->bits_per_pixel == 128 &&
++		dsc->pic_width == 1440 && dsc->pic_height == 3168 &&
++		dsc->slice_width == 720 && dsc->slice_height == 22;
++}
++
+ void dpu_encoder_update_topology(struct drm_encoder *drm_enc,
+ 				 struct msm_display_topology *topology,
+ 				 struct drm_atomic_commit *state,
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.h
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.h
+@@ -98,4 +98,6 @@
+ bool dpu_encoder_is_valid_for_commit(struct drm_encoder *drm_enc);
+ 
+ void dpu_encoder_start_frame_done_timer(struct drm_encoder *drm_enc);
++bool dpu_encoder_spr_quiescent(struct drm_encoder *drm_enc);
++bool dpu_encoder_aa569_format(struct drm_encoder *drm_enc);
+ #endif /* __DPU_ENCODER_H__ */
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_crtc.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_crtc.c
+@@ -24,6 +24,7 @@
+ #include <drm/drm_self_refresh_helper.h>
+ 
+ #include "dpu_kms.h"
++#include "dpu_aa569_spr_runtime.h"
+ #include "dpu_hw_lm.h"
+ #include "dpu_hw_ctl.h"
+ #include "dpu_hw_dspp.h"
+@@ -856,7 +857,10 @@
+ 	int i;
+ 
+ 
+-	if (!state->color_mgmt_changed && !drm_atomic_crtc_needs_modeset(state))
++	bool color_changed = state->color_mgmt_changed || drm_atomic_crtc_needs_modeset(state);
++	bool spr = _dpu_crtc_get_kms(crtc)->aa569_spr != NULL;
++
++	if (!color_changed && !spr)
+ 		return;
+ 
+ 	for (i = 0; i < cstate->num_mixers; i++) {
+@@ -864,6 +868,14 @@
+ 		dspp = mixer[i].hw_dspp;
+ 
+ 		if (!dspp)
++			continue;
++
++		/* Re-arm after power loss even when CTM/gamma did not change.
++		 * No SPR coefficients are rewritten on a live atomic update.
++		 */
++		if (spr)
++			ctl->ops.update_pending_flush_dspp(ctl, dspp->idx, DPU_DSPP_SPR);
++		if (!color_changed)
+ 			continue;
+ 
+ 		if (dspp->ops.setup_pcc) {
+@@ -1423,7 +1435,7 @@
+ 	else
+ 		topology.num_lm = 1;
+ 
+-	if (crtc_state->ctm || crtc_state->gamma_lut)
++	if (crtc_state->ctm || crtc_state->gamma_lut || dpu_kms->aa569_spr)
+ 		topology.num_dspp = topology.num_lm;
+ 
+ 	return topology;
+@@ -1475,6 +1487,11 @@
+ 						 DPU_HW_BLK_DSPP, hw_dspp,
+ 						 ARRAY_SIZE(hw_dspp));
+ 
++	if (dpu_kms->aa569_spr &&
++	    (num_lm != 2 || num_dspp != 2 || topology.num_dsc != 2 ||
++	     topology.num_intf != 1 || topology.cwb_enabled))
++		return -EINVAL;
++
+ 	for (i = 0; i < num_lm; i++) {
+ 		int ctl_idx = (i < num_ctl) ? i : (num_ctl-1);
+ 
+@@ -1533,6 +1550,10 @@
+ 	int rc = 0;
+ 
+ 	bool needs_dirtyfb = dpu_crtc_needs_dirtyfb(crtc_state);
++
++	rc = dpu_aa569_spr_check(crtc, crtc_state);
++	if (rc)
++		return rc;
+ 
+ 	/* don't reallocate resources if only ACTIVE has beeen changed */
+ 	if (crtc_state->mode_changed || crtc_state->connectors_changed ||
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_kms.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_kms.c
+@@ -33,6 +33,7 @@
+ #include "dpu_formats.h"
+ #include "dpu_hw_vbif.h"
+ #include "dpu_kms.h"
++#include "dpu_aa569_spr_runtime.h"
+ #include "dpu_plane.h"
+ #include "dpu_vbif.h"
+ #include "dpu_writeback.h"
+@@ -897,6 +898,7 @@
+ 
+ 	dpu_kms_global_obj_fini(dpu_kms);
+ 
++	dpu_kms->aa569_spr = NULL;
+ 	dpu_kms->catalog = NULL;
+ 
+ 	dpu_kms->hw_mdp = NULL;
+@@ -1290,6 +1292,13 @@
+ 		goto err_pm_put;
+ 	}
+ 
++	rc = dpu_aa569_spr_load(dpu_kms);
++	if (rc)
++		goto err_pm_put;
++	rc = dpu_aa569_spr_restore(dpu_kms);
++	if (rc)
++		goto err_pm_put;
++
+ 	dev->mode_config.min_width = 0;
+ 	dev->mode_config.min_height = 0;
+ 
+@@ -1471,6 +1480,12 @@
+ 	struct msm_drm_private *priv = platform_get_drvdata(pdev);
+ 	struct dpu_kms *dpu_kms = to_dpu_kms(priv->kms);
+ 
++	int ret = dpu_aa569_spr_suspend(dpu_kms);
++
++	if (ret)
++		return ret;
++	dpu_kms->aa569_spr_clocks_on = false;
++
+ 	/*
+ 	 * The MDSS power domain may collapse as soon as the clocks are gone;
+ 	 * halt the VBIF AXI ports first where the hardware asks for it.
+@@ -1541,6 +1556,15 @@
+ 	rc = clk_bulk_prepare_enable(dpu_kms->num_clocks, dpu_kms->clocks);
+ 	if (rc) {
+ 		DPU_ERROR("clock enable failed rc:%d\n", rc);
++		return rc;
++	}
++
++	dpu_kms->aa569_spr_clocks_on = true;
++	rc = dpu_aa569_spr_restore(dpu_kms);
++	if (rc) {
++		dpu_vbif_axi_halt_request(dpu_kms);
++		dpu_kms->aa569_spr_clocks_on = false;
++		clk_bulk_disable_unprepare(dpu_kms->num_clocks, dpu_kms->clocks);
+ 		return rc;
+ 	}
+ 
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_kms.h
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_kms.h
+@@ -83,6 +83,10 @@
+ 
+ 	struct dpu_hw_vbif *hw_vbif;
+ 	struct dpu_hw_mdp *hw_mdp;
++
++	/* Explicit fixed-profile phone bring-up backend; NULL on normal boards. */
++	struct aa569_spr_runtime *aa569_spr;
++	bool aa569_spr_clocks_on;
+ 
+ 	bool has_danger_ctrl;
+ 
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.h
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.h
+@@ -78,10 +78,12 @@
+  * DSPP sub-blocks
+  * @DPU_DSPP_PCC             Panel color correction block
+  * @DPU_DSPP_GC              Gamma correction block
++ * @DPU_DSPP_SPR             Subpixel rendering block
+  */
+ enum {
+ 	DPU_DSPP_PCC = 0x1,
+ 	DPU_DSPP_GC,
++	DPU_DSPP_SPR,
+ 	DPU_DSPP_MAX
+ };
+ 
+@@ -335,10 +337,12 @@
+  * struct dpu_dspp_sub_blks: Information of DSPP block
+  * @pcc: pixel color correction block
+  * @gc: gamma correction block
++ * @spr: subpixel rendering block
+  */
+ struct dpu_dspp_sub_blks {
+ 	struct dpu_pp_blk pcc;
+ 	struct dpu_pp_blk gc;
++	struct dpu_pp_blk spr;
+ };
+ 
+ struct dpu_pingpong_sub_blks {
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.c
+@@ -418,6 +418,33 @@
+ 		.len = 0x90, .version = 0x60000},
+ };
+ 
++static const struct dpu_dspp_sub_blks sm8750_aa569_dspp_sblk[] = {
++	{
++		.pcc = {.name = "pcc", .base = 0x1700,
++			.len = 0x90, .version = 0x60000},
++		.spr = {.name = "spr", .base = 0x15400,
++			.len = 0x200, .version = 0x20000},
++	},
++	{
++		.pcc = {.name = "pcc", .base = 0x1700,
++			.len = 0x90, .version = 0x60000},
++		.spr = {.name = "spr", .base = 0x14400,
++			.len = 0x200, .version = 0x20000},
++	},
++	{
++		.pcc = {.name = "pcc", .base = 0x1700,
++			.len = 0x90, .version = 0x60000},
++		.spr = {.name = "spr", .base = 0x13400,
++			.len = 0x200, .version = 0x20000},
++	},
++	{
++		.pcc = {.name = "pcc", .base = 0x1700,
++			.len = 0x90, .version = 0x60000},
++		.spr = {.name = "spr", .base = 0x12400,
++			.len = 0x200, .version = 0x20000},
++	}
++};
++
+ /*************************************************************
+  * PINGPONG sub blocks config
+  *************************************************************/
+--- a/drivers/gpu/drm/msm/disp/dpu1/catalog/dpu_12_0_sm8750.h
++++ b/drivers/gpu/drm/msm/disp/dpu1/catalog/dpu_12_0_sm8750.h
+@@ -197,19 +197,19 @@
+ 	{
+ 		.name = "dspp_0", .id = DSPP_0,
+ 		.base = 0x54000, .len = 0x1800,
+-		.sblk = &sm8750_dspp_sblk,
++		.sblk = &sm8750_aa569_dspp_sblk[0],
+ 	}, {
+ 		.name = "dspp_1", .id = DSPP_1,
+ 		.base = 0x56000, .len = 0x1800,
+-		.sblk = &sm8750_dspp_sblk,
++		.sblk = &sm8750_aa569_dspp_sblk[1],
+ 	}, {
+ 		.name = "dspp_2", .id = DSPP_2,
+ 		.base = 0x58000, .len = 0x1800,
+-		.sblk = &sm8750_dspp_sblk,
++		.sblk = &sm8750_aa569_dspp_sblk[2],
+ 	}, {
+ 		.name = "dspp_3", .id = DSPP_3,
+ 		.base = 0x5a000, .len = 0x1800,
+-		.sblk = &sm8750_dspp_sblk,
++		.sblk = &sm8750_aa569_dspp_sblk[3],
+ 	},
+ };
+ 
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_ctl.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_ctl.c
+@@ -393,7 +393,7 @@
+ static void dpu_hw_ctl_update_pending_flush_dspp_sub_blocks(
+ 	struct dpu_hw_ctl *ctx,	enum dpu_dspp dspp, u32 dspp_sub_blk)
+ {
+-	if (dspp >= DSPP_MAX)
++	if (dspp < DSPP_0 || dspp >= DSPP_MAX)
+ 		return;
+ 
+ 	switch (dspp_sub_blk) {
+@@ -402,6 +402,9 @@
+ 		break;
+ 	case DPU_DSPP_GC:
+ 		ctx->pending_dspp_flush_mask[dspp - DSPP_0] |= BIT(5);
++		break;
++	case DPU_DSPP_SPR:
++		ctx->pending_dspp_flush_mask[dspp - DSPP_0] |= BIT(8);
+ 		break;
+ 	default:
+ 		return;
+--- a/drivers/gpu/drm/msm/msm_mdss.c
++++ b/drivers/gpu/drm/msm/msm_mdss.c
+@@ -309,6 +309,7 @@
+ static int msm_mdss_reset(struct device *dev)
+ {
+ 	struct reset_control *reset;
++	int ret;
+ 
+ 	reset = reset_control_get_optional_exclusive(dev, NULL);
+ 	if (!reset) {
+@@ -319,17 +320,19 @@
+ 				     "failed to acquire mdss reset\n");
+ 	}
+ 
+-	reset_control_assert(reset);
++	ret = reset_control_assert(reset);
++	if (ret)
++		goto out;
+ 	/*
+ 	 * Tests indicate that reset has to be held for some period of time,
+ 	 * make it one frame in a typical system
+ 	 */
+ 	msleep(20);
+-	reset_control_deassert(reset);
+-
++	ret = reset_control_deassert(reset);
++
++out:
+ 	reset_control_put(reset);
+-
+-	return 0;
++	return ret;
+ }
+ 
+ /*
+--- a/drivers/gpu/drm/msm/Makefile
++++ b/drivers/gpu/drm/msm/Makefile
+@@ -69,6 +69,8 @@
+ 	disp/mdp5/mdp5_smp.o \
+ 
+ msm-display-$(CONFIG_DRM_MSM_DPU) += \
++	disp/dpu1/dpu_aa569_spr.o \
++	disp/dpu1/dpu_aa569_spr_runtime.o \
+ 	disp/dpu1/dpu_core_perf.o \
+ 	disp/dpu1/dpu_crtc.o \
+ 	disp/dpu1/dpu_encoder.o \

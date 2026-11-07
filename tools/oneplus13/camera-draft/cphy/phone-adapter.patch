@@ -1,0 +1,194 @@
+--- a/drivers/phy/qualcomm/phy-qcom-mipi-csi2-core.c
++++ b/drivers/phy/qualcomm/phy-qcom-mipi-csi2-core.c
+@@ -36,6 +36,21 @@
+ 	int i, pstate;
+ 	int ret;
+ 
++	if (link_freq <= 0)
++		return -EINVAL;
++	csi2phy->timer_clk_rate = 0;
++	if (csi2phy->soc_cfg->ops->core_rate) {
++		ret = csi2phy->soc_cfg->ops->core_rate(csi2phy, &opp_rate);
++		if (ret)
++			return ret;
++	}
++	if (csi2phy->soc_cfg->fixed_timer_rate) {
++		timer_rate = clk_round_rate(csi2phy->timer_clk,
++					    csi2phy->soc_cfg->fixed_timer_rate);
++		if (timer_rate != csi2phy->soc_cfg->fixed_timer_rate)
++			return timer_rate < 0 ? timer_rate : -ERANGE;
++	}
++
+ 	opp = dev_pm_opp_find_freq_ceil(dev, &opp_rate);
+ 	if (IS_ERR(opp)) {
+ 		dev_err(csi2phy->dev, "Couldn't find ceiling for %lld Hz\n",
+@@ -69,7 +84,8 @@
+ 		goto unset_opp_rate;
+ 	}
+ 
+-	timer_rate = clk_round_rate(csi2phy->timer_clk, link_freq / 4);
++	timer_rate = clk_round_rate(csi2phy->timer_clk,
++		csi2phy->soc_cfg->fixed_timer_rate ?: link_freq / 4);
+ 	if (timer_rate <= 0) {
+ 		ret = -ENODEV;
+ 		goto unset_opp_rate;
+@@ -78,6 +94,10 @@
+ 	ret = clk_set_rate(csi2phy->timer_clk, timer_rate);
+ 	if (ret)
+ 		goto unset_opp_rate;
++	if (clk_get_rate(csi2phy->timer_clk) != timer_rate) {
++		ret = -ERANGE;
++		goto unset_opp_rate;
++	}
+ 
+ 	csi2phy->timer_clk_rate = timer_rate;
+ 
+@@ -105,6 +125,7 @@
+ 	const struct mipi_csi2phy_device_regs *regs = &csi2phy->soc_cfg->reg_info;
+ 	int ret;
+ 
++	csi2phy->configured = false;
+ 	if (csi2phy->phy_mode == PHY_MODE_MIPI_DPHY) {
+ 		struct phy_configure_opts_mipi_dphy *dphy = &opts->mipi_dphy;
+ 
+@@ -115,13 +136,13 @@
+ 		    dphy->lanes > CSI2_MAX_DATA_LANES)
+ 			return -EINVAL;
+ 		cfg->link_freq = dphy->hs_clk_rate;
+-		return 0;
++		goto validate;
+ 	}
+ 	if (csi2phy->phy_mode == PHY_MODE_MIPI_CPHY) {
+ 		struct phy_configure_opts_mipi_cphy *cphy = &opts->mipi_cphy;
+ 
+ 		/* No borrowed SoC table: fail before regulators/clocks/MMIO. */
+-		if (!regs->cphy || !regs->num_cphy)
++		if ((!regs->cphy || !regs->num_cphy) && !csi2phy->soc_cfg->ops->validate)
+ 			return -EOPNOTSUPP;
+ 		if (!cphy->trios || cphy->trios > CSI2_MAX_DATA_TRIOS ||
+ 		    cphy->trios != cfg->num_data_lanes ||
+@@ -132,9 +153,15 @@
+ 		cfg->link_freq = cphy->symbol_rate / 2;
+ 		cfg->t_prepare_ns = cphy->t_prepare_ns;
+ 		cfg->t_preamble_ns = cphy->t_preamble_ns;
+-		return 0;
++		goto validate;
+ 	}
+ 	return -EOPNOTSUPP;
++
++validate:
++	ret = csi2phy->soc_cfg->ops->validate ?
++		csi2phy->soc_cfg->ops->validate(csi2phy, cfg) : 0;
++	csi2phy->configured = !ret;
++	return ret;
+ }
+ 
+ static int phy_qcom_mipi_csi2_set_mode(struct phy *phy,
+@@ -152,6 +179,14 @@
+ 	struct mipi_csi2phy_device *csi2phy = phy_get_drvdata(phy);
+ 	const struct mipi_csi2phy_hw_ops *ops = csi2phy->soc_cfg->ops;
+ 	int i, ret;
++
++	if (!csi2phy->configured)
++		return -EINVAL;
++	if (ops->validate) {
++		ret = ops->validate(csi2phy, &csi2phy->stream_cfg);
++		if (ret)
++			return ret;
++	}
+ 
+ 	ret = regulator_bulk_enable(csi2phy->soc_cfg->num_supplies,
+ 				    csi2phy->supplies);
+@@ -184,6 +219,8 @@
+ 	return 0;
+ 
+ unset_clocks:
++	/* lanes_enable may have partially programmed the receiver or armed IRQs. */
++	ops->lanes_disable(csi2phy, &csi2phy->stream_cfg);
+ 	clk_bulk_disable_unprepare(csi2phy->soc_cfg->num_clk,
+ 				   csi2phy->clks);
+ 
+@@ -387,6 +424,7 @@
+ 	struct phy_provider *phy_provider;
+ 	struct device *dev = &pdev->dev;
+ 	struct phy *generic_phy;
++	struct resource *resource;
+ 	int ret;
+ 
+ 	csi2phy = devm_kzalloc(dev, sizeof(*csi2phy), GFP_KERNEL);
+@@ -461,9 +499,17 @@
+ 		return dev_err_probe(dev, ret,
+ 				     "failed to get regulator supplies\n");
+ 
+-	csi2phy->base = devm_platform_ioremap_resource(pdev, 0);
++	resource = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	if (!resource || resource_size(resource) < csi2phy->soc_cfg->minimum_reg_size)
++		return dev_err_probe(dev, -EINVAL, "PHY register window is too small\n");
++	csi2phy->base = devm_ioremap_resource(dev, resource);
+ 	if (IS_ERR(csi2phy->base))
+ 		return PTR_ERR(csi2phy->base);
++	if (csi2phy->soc_cfg->ops->init) {
++		ret = csi2phy->soc_cfg->ops->init(csi2phy);
++		if (ret)
++			return dev_err_probe(dev, ret, "PHY private initialization failed\n");
++	}
+ 
+ 	generic_phy = devm_phy_create(dev, NULL, &phy_qcom_mipi_csi2_ops);
+ 	if (IS_ERR(generic_phy)) {
+@@ -482,6 +528,8 @@
+ }
+ 
+ static const struct of_device_id phy_qcom_mipi_csi2_of_match_table[] = {
++	{ .compatible = "oneplus,dodge-ultrawide-csi2-phy-experimental",
++	  .data = &mipi_csi2_cphy_dodge_ultrawide },
+ 	{ .compatible	= "qcom,x1e80100-csi2-phy", .data = &mipi_csi2_dphy_4nm_x1e },
+ 	{ .compatible	= "qcom,kaanapali-csi2-phy", .data = &mipi_csi2_dphy_3nm_kaanapali },
+ 	{ }
+--- a/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c
++++ b/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c
+@@ -506,3 +506,6 @@
+ 	.genpds = x1e_genpds,
+ 	.num_genpds = ARRAY_SIZE(x1e_genpds),
+ };
++
++/* Opt-in isolated candidate; the normal phone DT does not select this data. */
++#include "dodge-cphy-mmio.h"
+--- a/drivers/phy/qualcomm/phy-qcom-mipi-csi2.h
++++ b/drivers/phy/qualcomm/phy-qcom-mipi-csi2.h
+@@ -35,6 +35,11 @@
+ struct mipi_csi2phy_device;
+ 
+ struct mipi_csi2phy_hw_ops {
++	int (*init)(struct mipi_csi2phy_device *csi2phy_dev);
++	int (*validate)(struct mipi_csi2phy_device *csi2phy_dev,
++			struct mipi_csi2phy_stream_cfg *cfg);
++	int (*core_rate)(struct mipi_csi2phy_device *csi2phy_dev,
++			 unsigned long *rate);
+ 	void (*hw_version_read)(struct mipi_csi2phy_device *csi2phy_dev);
+ 	void (*reset)(struct mipi_csi2phy_device *csi2phy_dev);
+ 	int (*lanes_enable)(struct mipi_csi2phy_device *csi2phy_dev,
+@@ -75,6 +80,8 @@
+ };
+ 
+ struct mipi_csi2phy_soc_cfg {
++	u32 fixed_timer_rate;
++	u32 minimum_reg_size;
+ 	const struct mipi_csi2phy_hw_ops *ops;
+ 	const struct mipi_csi2phy_device_regs reg_info;
+ 
+@@ -89,6 +96,8 @@
+ };
+ 
+ struct mipi_csi2phy_device {
++	void *hw_priv;
++	bool configured;
+ 	struct device *dev;
+ 	u8 phy_mode;
+ 
+@@ -110,5 +119,6 @@
+ 
+ extern const struct mipi_csi2phy_soc_cfg mipi_csi2_dphy_4nm_x1e;
+ extern const struct mipi_csi2phy_soc_cfg mipi_csi2_dphy_3nm_kaanapali;
++extern const struct mipi_csi2phy_soc_cfg mipi_csi2_cphy_dodge_ultrawide;
+ 
+ #endif /* __PHY_QCOM_MIPI_CSI2_H__ */

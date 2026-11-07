@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-2.0-only
+[Unit]
+Description=Monitor power and the power key during OnePlus 13 off-mode charging
+ConditionKernelCommandLine=oneplus13.persistent=1
+ConditionKernelCommandLine=androidboot.mode=charger
+Requires=oneplus13-persistent-hardware.service
+After=oneplus13-persistent-hardware.service
+Conflicts=display-manager.service
+
+[Service]
+Type=simple
+ExecStartPre=/usr/local/libexec/op13-mark-boot-success
+ExecStart=/usr/bin/python3 /run/oneplus13/persistent/persistent-charger.py
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=5

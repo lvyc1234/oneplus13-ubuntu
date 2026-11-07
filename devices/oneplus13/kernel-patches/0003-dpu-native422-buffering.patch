@@ -1,0 +1,231 @@
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c
+@@ -1274,6 +1274,28 @@
+ 	}
+ }
+ 
++/*
++ * Four latency lines per pingpong, as in the SM8750 vendor catalog.
++ * The callback exists only on hardware where offset 0x1c is a PPB FIFO size,
++ * not the legacy tear-check start position. Called on enable and PM restore.
++ */
++static void dpu_encoder_update_ppb_size(struct dpu_encoder_virt *dpu_enc,
++				      const struct drm_display_mode *mode)
++{
++	u32 count = 0, pixels;
++	int i;
++
++	for (i = 0; i < MAX_CHANNELS_PER_ENC; i++)
++		if (dpu_enc->hw_pp[i])
++			count++;
++	if (!count)
++		return;
++	pixels = mult_frac(mode->hdisplay, 4, count);
++	for (i = 0; i < MAX_CHANNELS_PER_ENC; i++)
++		if (dpu_enc->hw_pp[i] && dpu_enc->hw_pp[i]->ops.setup_ppb_fifo_size)
++			dpu_enc->hw_pp[i]->ops.setup_ppb_fifo_size(dpu_enc->hw_pp[i], pixels);
++}
++
+ static void _dpu_encoder_virt_enable_helper(struct drm_encoder *drm_enc)
+ {
+ 	struct dpu_encoder_virt *dpu_enc = NULL;
+@@ -1290,6 +1312,9 @@
+ 		return;
+ 	}
+ 
++
++	if (drm_enc->crtc && drm_enc->crtc->state)
++		dpu_encoder_update_ppb_size(dpu_enc, &drm_enc->crtc->state->adjusted_mode);
+ 
+ 	if (dpu_enc->disp_info.intf_type == INTF_DP &&
+ 		dpu_enc->cur_master->hw_mdptop &&
+@@ -2005,6 +2030,7 @@
+ 	const u32 rtl_max_bpc = 10, rtl_output_data_width = 64;
+ 	const u32 pipeline_latency = 28;
+ 	u32 bpp = drm_dsc_get_bpp_int(dsc);
++	u32 container_width = dsc->slice_width;
+ 	u32 num_active_ss = enc_ip_width / dsc->slice_width;
+ 	u32 max_muxword_size, max_se_size, max_ssm_delay, mux_word_size;
+ 	u32 input_ssm_out_latency, ob_data_width, obuf_latency;
+@@ -2012,6 +2038,12 @@
+ 	u32 multi_hs_extra_budget_bits, multi_hs_extra_latency;
+ 	bool multi_hs_c, multi_hs_d;
+ 
++	/* MSM stores physical bpp; native422 operates on two-pixel groups. */
++	if (dsc->native_422) {
++		bpp *= 2;
++		container_width /= 2;
++	}
++
+ 	max_muxword_size = (rtl_max_bpc >= 12) ? 64 : 48;
+ 	max_se_size = 4 * (rtl_max_bpc + 1);
+ 	max_ssm_delay = max_se_size + max_muxword_size - 1;
+@@ -2020,6 +2052,9 @@
+ 	input_ssm_out_latency = pipeline_latency +
+ 				3 * (max_ssm_delay + 2) * num_active_ss;
+ 	ob_data_width = (rtl_output_data_width >= max_muxword_size) ?
++			rtl_output_data_width : 2 * rtl_output_data_width;
++	if (dsc->native_422)
++		ob_data_width = (rtl_output_data_width >= 2 * max_muxword_size) ?
+ 			rtl_output_data_width : 2 * rtl_output_data_width;
+ 	obuf_latency = DIV_ROUND_UP(9 * ob_data_width + mux_word_size, bpp) + 1;
+ 	base_hs_latency = dsc->initial_xmit_delay + input_ssm_out_latency +
+@@ -2038,7 +2073,7 @@
+ 	multi_hs_extra_latency = DIV_ROUND_UP(multi_hs_extra_budget_bits, bpp);
+ 
+ 	return DIV_ROUND_UP(base_hs_latency + multi_hs_extra_latency,
+-			    dsc->slice_width);
++			    container_width);
+ }
+ 
+ static void dpu_encoder_dsc_pipe_cfg(struct dpu_hw_ctl *ctl,
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.h
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.h
+@@ -145,10 +145,12 @@
+ /**
+  * DSC sub-blocks/features
+  * @DPU_DSC_NATIVE_42x_EN     Supports NATIVE_422_EN and NATIVE_420_EN encoding
++ * @DPU_DSC_FULL_ICH_PREC     Full ICH precision for high-bpc input
+  * @DPU_DSC_MAX
+  */
+ enum {
+ 	DPU_DSC_NATIVE_42x_EN = 0x1,
++	DPU_DSC_FULL_ICH_PREC,
+ 	DPU_DSC_MAX
+ };
+ 
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_dsc_1_2.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_dsc_1_2.c
+@@ -126,6 +126,11 @@
+ 
+ 	data |= (_dsc_calc_output_buf_max_addr(hw_dsc, num_active_slice_per_enc) << 18);
+ 
++	/* Vendor DPU >= 10 enables full ICH precision for >8bpc input. */
++	if ((hw_dsc->caps->features & BIT(DPU_DSC_FULL_ICH_PREC)) &&
++	    dsc->bits_per_component > 8)
++		data |= BIT(12);
++
+ 	DPU_REG_WRITE(hw, sblk->enc.base + ENC_DF_CTRL, data);
+ 
+ 	data = (dsc->dsc_version_minor & 0xf) << 28;
+@@ -234,7 +239,9 @@
+ 		data |= BIT(12);
+ 	if (mode & DSC_MODE_MULTIPLEX)
+ 		data |= BIT(13);
+-	if (!(mode & DSC_MODE_VIDEO))
++	/* Modern native422 wrappers use the dedicated 4HS merge registers. */
++	if (!(mode & DSC_MODE_VIDEO) &&
++	    !(dsc->native_422 && sblk->ctl.len >= 0x18))
+ 		data |= BIT(17);
+ 
+ 	DPU_REG_WRITE(hw, sblk->ctl.base + DSC_CFG, data);
+@@ -244,8 +251,10 @@
+ 	 * clear its configuration explicitly rather than inheriting whatever
+ 	 * the bootloader left in the block.
+ 	 */
+-	DPU_REG_WRITE(hw, sblk->ctl.base + DSC_4HS_MERGE_CFG, 0);
+-	DPU_REG_WRITE(hw, sblk->ctl.base + DSC_4HS_MERGE_EN, 0);
++	if (sblk->ctl.len >= 0x18) {
++		DPU_REG_WRITE(hw, sblk->ctl.base + DSC_4HS_MERGE_CFG, 0);
++		DPU_REG_WRITE(hw, sblk->ctl.base + DSC_4HS_MERGE_EN, 0);
++	}
+ }
+ 
+ static void dpu_hw_dsc_config_thresh_1_2(struct dpu_hw_dsc *hw_dsc,
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_pingpong.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_pingpong.c
+@@ -21,6 +21,7 @@
+ #define PP_INT_COUNT_VAL                0x014
+ #define PP_SYNC_THRESH                  0x018
+ #define PP_START_POS                    0x01C
++#define PP_PPB_FIFO_SIZE                0x01C
+ #define PP_RD_PTR_IRQ                   0x020
+ #define PP_WR_PTR_IRQ                   0x024
+ #define PP_OUT_LINE_COUNT               0x028
+@@ -281,6 +282,11 @@
+ 	data |= BIT(18); /* endian flip */
+ 	DPU_REG_WRITE(pp_c, PP_DCE_DATA_OUT_SWAP, data);
+ 	return 0;
++}
++
++static void dpu_hw_pp_setup_ppb_fifo_size(struct dpu_hw_pingpong *pp, u32 pixels)
++{
++	DPU_REG_WRITE(&pp->hw, PP_PPB_FIFO_SIZE, (pixels / 4) & 0xfff);
+ }
+ 
+ /**
+@@ -325,6 +331,9 @@
+ 		c->ops.disable_dsc = dpu_hw_pp_dsc_disable;
+ 	}
+ 
++	if (mdss_rev->core_major_ver >= 12)
++		c->ops.setup_ppb_fifo_size = dpu_hw_pp_setup_ppb_fifo_size;
++
+ 	if (mdss_rev->core_major_ver >= 3)
+ 		c->ops.setup_dither = dpu_hw_pp_setup_dither;
+ 
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_pingpong.h
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_pingpong.h
+@@ -91,6 +91,9 @@
+ 	 * @setup_dsc: Setup DSC
+ 	 */
+ 	int (*setup_dsc)(struct dpu_hw_pingpong *pp);
++
++	/** @setup_ppb_fifo_size: Set latency FIFO size, DPU12+ only. */
++	void (*setup_ppb_fifo_size)(struct dpu_hw_pingpong *pp, u32 pixels);
+ };
+ 
+ struct dpu_hw_merge_3d;
+--- a/drivers/gpu/drm/msm/disp/dpu1/catalog/dpu_12_0_sm8750.h
++++ b/drivers/gpu/drm/msm/disp/dpu1/catalog/dpu_12_0_sm8750.h
+@@ -316,42 +316,42 @@
+ 	{
+ 		.name = "dce_0_0", .id = DSC_0,
+ 		.base = 0x80000, .len = 0x8,
+-		.features = BIT(DPU_DSC_NATIVE_42x_EN),
++		.features = BIT(DPU_DSC_NATIVE_42x_EN) | BIT(DPU_DSC_FULL_ICH_PREC),
+ 		.sblk = &sm8750_dsc_sblk_0,
+ 	}, {
+ 		.name = "dce_0_1", .id = DSC_1,
+ 		.base = 0x80000, .len = 0x8,
+-		.features = BIT(DPU_DSC_NATIVE_42x_EN),
++		.features = BIT(DPU_DSC_NATIVE_42x_EN) | BIT(DPU_DSC_FULL_ICH_PREC),
+ 		.sblk = &sm8750_dsc_sblk_1,
+ 	}, {
+ 		.name = "dce_1_0", .id = DSC_2,
+ 		.base = 0x81000, .len = 0x8,
+-		.features = BIT(DPU_DSC_NATIVE_42x_EN),
++		.features = BIT(DPU_DSC_NATIVE_42x_EN) | BIT(DPU_DSC_FULL_ICH_PREC),
+ 		.sblk = &sm8750_dsc_sblk_0,
+ 	}, {
+ 		.name = "dce_1_1", .id = DSC_3,
+ 		.base = 0x81000, .len = 0x8,
+-		.features = BIT(DPU_DSC_NATIVE_42x_EN),
++		.features = BIT(DPU_DSC_NATIVE_42x_EN) | BIT(DPU_DSC_FULL_ICH_PREC),
+ 		.sblk = &sm8750_dsc_sblk_1,
+ 	}, {
+ 		.name = "dce_2_0", .id = DSC_4,
+ 		.base = 0x82000, .len = 0x8,
+-		.features = BIT(DPU_DSC_NATIVE_42x_EN),
++		.features = BIT(DPU_DSC_NATIVE_42x_EN) | BIT(DPU_DSC_FULL_ICH_PREC),
+ 		.sblk = &sm8750_dsc_sblk_0,
+ 	}, {
+ 		.name = "dce_2_1", .id = DSC_5,
+ 		.base = 0x82000, .len = 0x8,
+-		.features = BIT(DPU_DSC_NATIVE_42x_EN),
++		.features = BIT(DPU_DSC_NATIVE_42x_EN) | BIT(DPU_DSC_FULL_ICH_PREC),
+ 		.sblk = &sm8750_dsc_sblk_1,
+ 	}, {
+ 		.name = "dce_3_0", .id = DSC_6,
+ 		.base = 0x83000, .len = 0x8,
+-		.features = BIT(DPU_DSC_NATIVE_42x_EN),
++		.features = BIT(DPU_DSC_NATIVE_42x_EN) | BIT(DPU_DSC_FULL_ICH_PREC),
+ 		.sblk = &sm8750_dsc_sblk_0,
+ 	}, {
+ 		.name = "dce_3_1", .id = DSC_7,
+ 		.base = 0x83000, .len = 0x8,
+-		.features = BIT(DPU_DSC_NATIVE_42x_EN),
++		.features = BIT(DPU_DSC_NATIVE_42x_EN) | BIT(DPU_DSC_FULL_ICH_PREC),
+ 		.sblk = &sm8750_dsc_sblk_1,
+ 	},
+ };

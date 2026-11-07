@@ -1,0 +1,4 @@
+
+# Preserve diff context and unchanged third-party source/license text.
+*.patch -whitespace
+third_party/qbootctl/** -whitespace

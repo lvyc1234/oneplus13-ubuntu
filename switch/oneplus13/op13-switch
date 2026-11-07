@@ -1,0 +1,242 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# Switch the single usable OnePlus 13 A-slot boot image between Android/Linux.
+set -u
+
+PROG=op13-switch
+BOOT_LABEL=boot_a
+ROOT_LABEL=linux_rootfs
+BOOT_BYTES=100663296
+ROOT_MOUNT=/mnt/op13-rootfs
+STORE_DEFAULT=/var/lib/op13/switch
+DRY_RUN=0
+NO_REBOOT=0
+MOUNTED=0
+
+die() { printf '%s: %s\n' "$PROG" "$*" >&2; exit 1; }
+say() { printf '%s\n' "$*"; }
+
+resolve_part() {
+    label=$1
+    for base in /dev/block/by-name /dev/disk/by-partlabel; do
+        [ -e "$base/$label" ] && { readlink -f "$base/$label"; return 0; }
+    done
+    for uevent in /sys/class/block/*/uevent; do
+        [ -e "$uevent" ] || continue
+        grep -qx "PARTNAME=$label" "$uevent" || continue
+        dir=${uevent%/uevent}
+        printf '/dev/%s\n' "${dir##*/}"
+        return 0
+    done
+    return 1
+}
+
+is_android() { [ -d /system/bin ]; }
+
+cleanup() {
+    if [ "$MOUNTED" = 1 ]; then
+        sync
+        umount "$ROOT_MOUNT" 2>/dev/null || umount -l "$ROOT_MOUNT" 2>/dev/null || true
+        MOUNTED=0
+    fi
+}
+trap cleanup EXIT
+
+mount_store() {
+    if [ -d "$STORE_DEFAULT" ] || ! is_android; then
+        STORE=$STORE_DEFAULT
+        mkdir -p "$STORE"
+        return
+    fi
+    rootdev=$(resolve_part "$ROOT_LABEL") || die "missing $ROOT_LABEL"
+    mkdir -p "$ROOT_MOUNT"
+    grep -q " $ROOT_MOUNT " /proc/mounts ||
+        mount -t ext4 -o rw,noatime "$rootdev" "$ROOT_MOUNT" ||
+        die "cannot mount $rootdev"
+    MOUNTED=1
+    STORE=$ROOT_MOUNT$STORE_DEFAULT
+    mkdir -p "$STORE"
+}
+
+sha_file() { sha256sum "$1" | cut -d' ' -f1; }
+sha_part() { dd if="$1" bs=1M 2>/dev/null | sha256sum | cut -d' ' -f1; }
+
+validate_set() {
+    dir=$1
+    [ -f "$dir/boot.img" ] && [ -f "$dir/SHA256SUMS" ] ||
+        die "$dir is incomplete"
+    want=$(sed -n 's/^\([0-9a-f]\{64\}\)  boot\.img$/\1/p' "$dir/SHA256SUMS")
+    [ -n "$want" ] || die "$dir has no boot.img checksum"
+    [ "$(stat -c %s "$dir/boot.img")" = "$BOOT_BYTES" ] ||
+        die "$dir/boot.img has wrong size"
+    got=$(sha_file "$dir/boot.img")
+    [ "$got" = "$want" ] || die "$dir/boot.img checksum mismatch"
+}
+
+occupant() {
+    now=$(sha_part "$BOOTDEV")
+    for name in linux android; do
+        [ -f "$STORE/$name/boot.img" ] || continue
+        [ "$(sha_file "$STORE/$name/boot.img")" = "$now" ] && {
+            printf '%s' "$name"
+            return
+        }
+    done
+    printf 'unknown'
+}
+
+install_set() {
+    kind=$1
+    validate_set "$STORE/$kind"
+    source=$STORE/$kind/boot.img
+    want=$(sha_file "$source")
+    if [ "$DRY_RUN" = 1 ]; then
+        say "dry-run: $source -> $BOOTDEV ($want)"
+        return
+    fi
+    printf '%s\n' "$kind" > "$STORE/.switch-incomplete"
+    sync
+    dd if="$source" of="$BOOTDEV" bs=1M 2>/dev/null ||
+        die "write failed; keep $STORE/android/boot.img for recovery"
+    sync
+    got=$(sha_part "$BOOTDEV")
+    [ "$got" = "$want" ] ||
+        die "readback mismatch; do not reboot; restore boot_a over fastboot"
+    rm -f "$STORE/.switch-incomplete"
+    sync
+    say "installed $kind boot image on $BOOTDEV"
+}
+
+reboot_now() {
+    [ "$NO_REBOOT" = 1 ] || [ "$DRY_RUN" = 1 ] && {
+        say "not rebooting"
+        return
+    }
+    cleanup
+    sync
+    if command -v svc >/dev/null 2>&1; then
+        svc power reboot
+    else
+        reboot
+    fi
+}
+
+[ "$(id -u)" = 0 ] || die "root is required"
+command=${1:-}
+[ -n "$command" ] || die "a command is required"
+shift
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --no-reboot) NO_REBOOT=1 ;;
+        --dry-run) DRY_RUN=1; NO_REBOOT=1 ;;
+        --store) shift; STORE=$1 ;;
+        *) die "unknown option $1" ;;
+    esac
+    shift
+done
+if ! is_android && [ "$command" = to-android ] && [ -x /usr/local/libexec/op13-qbootctl ]; then
+    [ -f /etc/op13-boot-b.sha256 ] || die "missing approved Linux boot identity"
+    sha256sum --check --strict /etc/op13-boot-b.sha256 || die "Linux boot identity differs"
+    mkdir -p /run/oneplus13
+    exec 9>/run/oneplus13/slot-state.lock
+    flock -w 10 9 || die "another slot operation is in progress"
+    case "$(/usr/local/libexec/op13-qbootctl -a)" in
+        'Active slot: _a'|'Active slot: _b') ;;
+        *) die "cannot determine the active slot" ;;
+    esac
+    [ "$(/usr/local/libexec/op13-qbootctl -b a)" = 'SLOT _a: is marked bootable' ] ||
+        die "Android A is not bootable"
+    if [ "$DRY_RUN" = 1 ]; then
+        say "dry-run: select Android A and reboot normally"
+        exit 0
+    fi
+    /usr/local/libexec/op13-qbootctl -s a || die "could not select Android A"
+    [ "$(/usr/local/libexec/op13-qbootctl -a)" = 'Active slot: _a' ] ||
+        die "Android A selection did not persist"
+    sync
+    if [ "$NO_REBOOT" = 1 ]; then
+        say "Android A selected"
+        exit 0
+    fi
+    exec systemctl reboot
+fi
+if [ "$command" = to-fastboot ]; then
+    if is_android; then
+        die "this Fastboot entry is for Ubuntu"
+    fi
+    if [ "$NO_REBOOT" = 1 ]; then
+        say "reboot target: bootloader"
+        exit 0
+    fi
+    sync
+    exec systemctl --reboot-argument=bootloader reboot
+fi
+if ! is_android && [ -f /etc/op13-boot-b.sha256 ]; then
+    case "$command" in
+        stash-android|to-linux|to-android)
+            die "this A/B installation uses Fastboot slot selection" ;;
+    esac
+fi
+if is_android; then
+    [ "$(getprop ro.boot.slot_suffix 2>/dev/null || true)" = _a ] ||
+        die "Android is not on slot A"
+fi
+BOOTDEV=$(resolve_part "$BOOT_LABEL") || die "missing $BOOT_LABEL"
+boot_bytes=$(blockdev --getsize64 "$BOOTDEV" 2>/dev/null || stat -c %s "$BOOTDEV")
+[ "$boot_bytes" = "$BOOT_BYTES" ] ||
+    die "unexpected boot_a size"
+[ -n "${STORE:-}" ] || mount_store
+
+case "$command" in
+    status)
+        say "slot: a"
+        say "boot device: $BOOTDEV"
+        say "occupant: $(occupant)"
+        say "store: $STORE"
+        for set in android linux; do
+            if validate_set "$STORE/$set" 2>/dev/null; then say "$set: valid"; else say "$set: missing/invalid"; fi
+        done
+        ;;
+    verify)
+        validate_set "$STORE/android"
+        validate_set "$STORE/linux"
+        say "both boot sets valid; occupant=$(occupant)"
+        ;;
+    stash-android)
+        now=$(sha_part "$BOOTDEV")
+        [ -n "$now" ] || die "cannot hash live boot"
+        if [ -f "$STORE/linux/boot.img" ] &&
+           [ "$(sha_file "$STORE/linux/boot.img")" = "$now" ]; then
+            die "active slot contains Linux; refusing to archive as Android"
+        fi
+        mkdir -p "$STORE/android"
+        if [ -f "$STORE/android/boot.img" ] &&
+           [ "$(sha_file "$STORE/android/boot.img")" = "$now" ]; then
+            exit 0
+        fi
+        tmp=$STORE/android/boot.img.new
+        dd if="$BOOTDEV" of="$tmp" bs=1M 2>/dev/null ||
+            die "cannot archive Android boot"
+        printf '%s  boot.img\n' "$(sha_file "$tmp")" > "$STORE/android/SHA256SUMS"
+        mv "$tmp" "$STORE/android/boot.img"
+        sync
+        ;;
+    to-linux)
+        [ ! -e "$STORE/.switch-incomplete" ] || die "an interrupted switch must be recovered over fastboot"
+        occupant=$(occupant)
+        [ "$occupant" = android ] || [ "$occupant" = unknown ] ||
+            die "already running Linux"
+        install_set linux
+        printf 'linux\n' > "$STORE/state"
+        reboot_now
+        ;;
+    to-android)
+        [ ! -e "$STORE/.switch-incomplete" ] || die "an interrupted switch must be recovered over fastboot"
+        install_set android
+        printf 'android\n' > "$STORE/state"
+        reboot_now
+        ;;
+    *)
+        die "usage: op13-switch status|verify|stash-android|to-linux|to-android|to-fastboot [--no-reboot]"
+        ;;
+esac

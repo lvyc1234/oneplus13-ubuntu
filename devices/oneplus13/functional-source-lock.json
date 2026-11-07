@@ -1,0 +1,10 @@
+{
+  "scope": "RESTORE_RUN88_KERNEL_SOURCE_INPUTS",
+  "known_integration": "1f5c1128d42a62244bef9974e58cfe07adf29f7d",
+  "files": {
+    "devices/oneplus13/kernel/synaptics-dodge/dodge-s3910-spi.c": "e259c8dca382edd8fdc09777e7b2ba244f719a90cfdec9147b35e017ffb59bd1",
+    "devices/oneplus13/kernel-patches/0012-sm8750-adsp-pas.patch": "90a2ae759b64ad283839f718f75c1ebef495d7eeb85a65a3113c4fa24a8f7f8b",
+    "devices/oneplus13/kernel-patches/0013-qseecom-allowlist.patch": "016ac2809f9d500e49c7898d429b42ba660a332e43199e57c3a74fa58a522abe"
+  },
+  "phone_operations": 0
+}

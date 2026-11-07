@@ -1,0 +1,87 @@
+name: OnePlus 13 sensor userspace offline
+
+on:
+  push:
+    branches:
+      - 'oneplus13-sensor-userspace-offline-*'
+    paths:
+      - '.github/workflows/oneplus13-sensor-userspace.yml'
+      - 'tools/build-sensors.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sensor-userspace-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  userspace:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare isolated native ARM64 build host
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends python3 ca-certificates xz-utils uidmap util-linux dpkg-dev
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          test "$(uname -m)" = aarch64
+          unshare --map-root-user true
+      - name: Build pinned reference userspace and run upstream tests
+        run: |
+          python3 tools/build-sensors.py --output out/reference-build --work out/sensor-work --jobs 4
+      - name: Retain only board-independent userspace, never the reference ROM or hooks
+        run: |
+          mkdir -p out/userspace
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, json, shutil, struct, subprocess, tarfile
+          package=next(Path('out/reference-build').glob('*.deb'))
+          root=Path('out/extracted-reference')
+          subprocess.run(['dpkg-deb','-x',str(package),str(root)],check=True)
+          prefix=Path('usr/lib/erhai/sensors')
+          required=['bin/hexagonrpcd','bin/ssccli','libexec/iio-sensor-proxy']
+          assert all((root/prefix/n).is_file() for n in required)
+          files=[]
+          for p in sorted((root/prefix).rglob('*')):
+              if p.is_file() and not p.is_symlink():
+                  data=p.read_bytes()
+                  if data.startswith(b'\x7fELF'):
+                      assert data[4]==2 and struct.unpack_from('<H',data,18)[0]==183
+                  files.append({'path':p.relative_to(root).as_posix(),'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()})
+          archive=Path('out/userspace/sensor-userspace-arm64.tar.gz')
+          with tarfile.open(archive,'w:gz') as t:t.add(root/prefix,arcname=prefix.as_posix())
+          with tarfile.open(archive) as t:
+              assert all(m.name.startswith(prefix.as_posix()) for m in t)
+              assert not any('/rom/' in m.name or '/DEBIAN/' in m.name or '/hexagonrpcd/sensors/' in m.name for m in t)
+          shutil.copy2('out/reference-build/manifest.json','out/userspace/reference-build-manifest.json')
+          copyright=root/'usr/share/doc/erhai-sensors/copyright'
+          assert copyright.is_file()
+          shutil.copy2(copyright,'out/userspace/COPYRIGHT.reference')
+          shutil.copy2('/usr/share/common-licenses/GPL-3','out/userspace/GPL-3')
+          report={'scope':'OFFLINE_ARM64_USERSPACE_ONLY_NOT_PHONE_ACCEPTANCE',
+                  'reference_rom_excluded':True,'package_hooks_excluded':True,
+                  'phone_calibration_uploaded':False,'phone_operations':0,'files':files,
+                  'archive_sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),
+                  'archive_bytes':archive.stat().st_size}
+          Path('out/userspace/userspace-verification.json').write_text(json.dumps(report,indent=2)+'\n')
+          Path('out/userspace/DO-NOT-INSTALL.txt').write_text('Board-independent binary inputs only. Not a phone package; no ROM/registry/firmware. Host offline review required before any runtime use.\n')
+          PY
+      - name: Keep bounded build diagnostics
+        if: always()
+        run: |
+          mkdir -p out/diagnostics
+          find out/sensor-work -maxdepth 2 -type f -name '*.log' -exec cp '{}' out/diagnostics/ \; 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: oneplus13-sensor-userspace-${{ github.sha }}
+          path: |
+            out/userspace/
+            out/diagnostics/
+          if-no-files-found: error
+          retention-days: 14

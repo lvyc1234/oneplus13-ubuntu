@@ -1,0 +1,20 @@
+[Unit]
+Description=OnePlus 13 guarded RAM audio for the actual first user
+ConditionKernelCommandLine=oneplus13.first_user_audio=1
+ConditionPathExists=/run/oneplus13/ram-session
+After=oneplus13-firstboot-hardware.service user@1000.service
+Requires=oneplus13-firstboot-hardware.service
+BindsTo=user@1000.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/python3 /usr/libexec/oneplus13-first-user-audio.py start
+ExecStopPost=/usr/bin/python3 /usr/libexec/oneplus13-first-user-audio.py stop
+TimeoutStartSec=300
+TimeoutStopSec=35
+KillMode=control-group
+UMask=0077
+
+[Install]
+WantedBy=user@1000.service

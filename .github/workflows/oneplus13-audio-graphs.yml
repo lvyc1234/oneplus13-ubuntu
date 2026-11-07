@@ -1,0 +1,41 @@
+name: OnePlus 13 isolated microphone and speaker graph drafts
+on:
+  push:
+    branches: [oneplus13-platform-handoff-20261026]
+    paths:
+      - .github/workflows/oneplus13-audio-graphs.yml
+      - tools/oneplus13/audio-draft/*.m4
+      - tools/oneplus13/audio-draft/build-topology-drafts.py
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: oneplus13-audio-graphs-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  graphs:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare topology compiler without audio hardware
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends m4 alsa-utils
+          test "$(uname -m)" = aarch64
+      - name: Compile and decode separate phone graph drafts
+        run: python3 tools/oneplus13/audio-draft/build-topology-drafts.py --output out/audio-graphs
+      - name: Preserve graphs and offline evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oneplus13-audio-graphs-${{ github.sha }}
+          path: |
+            out/audio-graphs/build.log
+            out/audio-graphs/verification.json
+            out/audio-graphs/*.tplg
+            out/audio-graphs/*.conf
+          if-no-files-found: error
+          retention-days: 14

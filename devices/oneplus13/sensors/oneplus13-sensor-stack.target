@@ -1,0 +1,4 @@
+[Unit]
+Description=OnePlus 13 manually activated desktop sensor stack
+Wants=oneplus13-sensor-fileserver.service oneplus13-sensor-proxy.service
+After=oneplus13-sensor-fileserver.service oneplus13-sensor-proxy.service
